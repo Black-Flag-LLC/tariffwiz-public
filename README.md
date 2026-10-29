@@ -1,5 +1,10 @@
 # TARIFFWIZ
 
+<p align="center">
+  <a href="https://zacsluss.github.io/tariffwiz-public/"><img alt="Use TARIFFWIZ now" src="https://img.shields.io/badge/USE%20NOW-Open%20the%20calculator%20%E2%86%92-2357d6?style=for-the-badge"></a>
+</p>
+<p align="center"><a href="https://zacsluss.github.io/tariffwiz-public/">https://zacsluss.github.io/tariffwiz-public/</a> · free · no account · runs in your browser</p>
+
 A free US import-duty calculator for importers and customs brokers. Pick an HTS code, enter origin, value, mode and
 dates, and get the duty with every line explained: the base rate, every Chapter 99 measure in force on the entry date
 (Sections 232, 301 and 338, country measures, safeguards, quotas), stacked in CBP filing order, plus MPF, HMF and
@@ -18,9 +23,9 @@ other charges. Everything runs in the browser; nothing you type leaves your devi
 | `pipeline/` | Python (standard library) that builds the data from USITC, Federal Register and CBP sources, and watches them. |
 | `.github/workflows/` | CI, the daily tariff watch and update job, the monthly Census check, publishing. |
 
-## Develop
+## Run it on your own computer
 
-Node 22+ and Python 3.11+.
+Node 22+ (and Python 3.11+ only for the data pipeline). Download or clone this repository, then:
 
 ```bash
 cd app && npm ci

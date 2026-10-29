@@ -8,7 +8,7 @@ name: publish
 on:
   push:
     branches: [main]
-    paths: ['app/**', 'pipeline/**', '.github/**', 'publish_public.sh']
+    paths: ['app/**', 'pipeline/**', '.github/**', 'publish_public.sh', 'README.md']
   workflow_dispatch:
 permissions:
   contents: read
