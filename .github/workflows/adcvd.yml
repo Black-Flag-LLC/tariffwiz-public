@@ -36,7 +36,7 @@ jobs:
           npm test > ../test.txt 2>&1 || ok=false
           npm run audit:headings > ../audit.txt 2>&1 || ok=false
           echo "ok=$ok" >> "$GITHUB_OUTPUT"
-          tail -3 ../test.txt ../audit.txt
+          tail -n 3 ../test.txt ../audit.txt
       - if: steps.r.outputs.changed == 'true'
         name: Open the pull request (merge it when every check passed)
         run: |
@@ -44,7 +44,7 @@ jobs:
           branch="adcvd-refresh/$month"
           { echo "## AD/CVD order flags refreshed ($month)"; echo; echo '```json'; cat adcvd_report.json; echo '```'; echo
             echo "- Golden tests: $(grep -E 'Tests +[0-9]' test.txt | tr -s ' ')"
-            echo "- Heading audit: $(grep -E 'violation shapes' audit.txt | tail -1)"; echo
+            echo "- Heading audit: $(grep -E 'violation shapes' audit.txt | tail -n 1)"; echo
             echo "Opened by the adcvd-refresh workflow."; } > pr.md
           git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"

@@ -116,7 +116,7 @@ jobs:
           {
             echo "### Checks on the new data"; echo
             echo "- Golden tests: $(grep -E 'Tests +[0-9]' ../data/build/vitest.txt | tr -s ' ' || echo 'did not run')"
-            echo "- Heading audit: $(grep -E 'violation shapes' ../data/build/audit.txt | tail -1 || echo 'did not finish')"; echo
+            echo "- Heading audit: $(grep -E 'violation shapes' ../data/build/audit.txt | tail -n 1 || echo 'did not finish')"; echo
           } > ../data/build/checks.md
           if [ -n "$m" ] && npx tsx scripts/validate_census.ts --month "$m" > ../data/build/census.txt 2>&1; then
             python -I ../pipeline/census_gate.py check "../data/validation/census_20${m:0:2}-${m:2:2}_summary.json" >> ../data/build/checks.md || ok=false
