@@ -1,7 +1,7 @@
 name: publish
 # After every push to main (including a merged tariff-update pull request): mirror the shippable files into the public
 # copy (publish_public.sh) and, once that copy is public, redeploy the site.
-# Needs the secret PUBLIC_REPO_TOKEN: a fine-grained token on Zacsluss/tariffwiz-public with Contents, Workflows (the sync
+# Needs the secret PUBLIC_REPO_TOKEN: a fine-grained token on Black-Flag-LLC/tariffwiz-public with Contents, Workflows (the sync
 # copies .github/workflows) and Actions all read/write. Without it the job only prints a notice (sync by hand with
 # publish_public.sh). The preflight step names the missing access: seeing the repo needs only repository access,
 # cloning needs Contents.
@@ -15,7 +15,7 @@ permissions:
 concurrency: { group: publish, cancel-in-progress: false }
 jobs:
   publish:
-    if: github.repository == 'Zacsluss/tariffwiz'
+    if: github.repository == 'Black-Flag-LLC/tariffwiz'
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
@@ -23,14 +23,14 @@ jobs:
       - if: env.GH_TOKEN == ''
         run: echo "::notice::PUBLIC_REPO_TOKEN is not set; the public copy was not synced. Run publish_public.sh by hand."
       - if: env.GH_TOKEN != ''
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with: { persist-credentials: false }   # else git sends this repo's GITHUB_TOKEN to tariffwiz-public: 403
       - if: env.GH_TOKEN != ''
         name: Check the token can reach the public copy
         run: |
-          gh api repos/Zacsluss/tariffwiz-public -q '"token permissions on tariffwiz-public: \(.permissions)"' \
-            || { echo "::error::PUBLIC_REPO_TOKEN cannot see Zacsluss/tariffwiz-public (repository access)"; exit 1; }
-          git ls-remote "https://x-access-token:${GH_TOKEN}@github.com/Zacsluss/tariffwiz-public.git" HEAD >/dev/null \
+          gh api repos/Black-Flag-LLC/tariffwiz-public -q '"token permissions on tariffwiz-public: \(.permissions)"' \
+            || { echo "::error::PUBLIC_REPO_TOKEN cannot see Black-Flag-LLC/tariffwiz-public (repository access)"; exit 1; }
+          git ls-remote "https://x-access-token:${GH_TOKEN}@github.com/Black-Flag-LLC/tariffwiz-public.git" HEAD >/dev/null \
             || { echo "::error::PUBLIC_REPO_TOKEN cannot read the public copy over git (Contents permission)"; exit 1; }
       - if: env.GH_TOKEN != ''
         name: Sync the public copy
@@ -42,8 +42,8 @@ jobs:
       - if: env.GH_TOKEN != ''
         name: Redeploy the site (only once the copy is public)
         run: |
-          if [ "$(gh repo view Zacsluss/tariffwiz-public --json visibility -q .visibility)" = PUBLIC ]; then
-            gh workflow run ci.yml -R Zacsluss/tariffwiz-public -f deploy=true
+          if [ "$(gh repo view Black-Flag-LLC/tariffwiz-public --json visibility -q .visibility)" = PUBLIC ]; then
+            gh workflow run ci.yml -R Black-Flag-LLC/tariffwiz-public -f deploy=true
           else
             echo "Public copy is still private (pre-launch): synced, not deployed."
           fi
