@@ -1,0 +1,7 @@
+{
+ "_about": "Federal Register documents already reviewed against the rules. The site's status banner lists every tariff action published since rules.json meta.checked that is not here. Add one with: python -I pipeline/mark_reviewed.py DOC \"what it does / what was encoded\"",
+ "reviewed": [
+  {"doc": "2026-22049", "date": "2026-10-29", "note": "Proclamation 11074 (Section 232 wind turbines): orders negotiations only; clause (4) changes no tariff."},
+  {"doc": "2026-22292", "date": "2026-10-29", "note": "Proclamation 11076: note 51(b)(3) list change from 2026-10-30, encoded as listChanges (references/canada_note51_changes.json)."}
+ ]
+}

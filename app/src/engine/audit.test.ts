@@ -223,9 +223,21 @@ describe('Section 232 families', () => {
   it('VN laptop: $0', () => expect(run('8471.30.01.00', 'VN', 10000).duty).toBe(0));
   // Note 43 drones from deal partners take 9903.08.23/.24 only if "substantially all critical components" are allied
   // (43(d) L232291–232299); the engine assumes so and must flag it.
-  it('JP drone: 9903.08.24 flagged as an interpretation', () => {
-    const l = run('8806.22.00.00', 'JP', 10000, {}, { droneUse: true }).lines.find((x) => x.heading === '9903.08.24');
-    expect(l?.interpretation).toBeTruthy();
+  it('JP drone: partner rate 9903.08.24 on hold (CSMS #69738151), so the full +25% with a note', () => {
+    const r = run('8806.22.00.00', 'JP', 10000, {}, { droneUse: true });
+    expect(r.lines.some((x) => x.heading === '9903.08.24')).toBe(false);
+    expect(r.lines.find((x) => x.heading === '9903.08.22')?.amount).toBe(2500);
+    expect(r.notes.join(' ')).toMatch(/CSMS #69738151/);
+  });
+  it('drone dates and parts (PP 11055): none before 9/3; small-drone parts 0% then +25% from 2027-02-09; large-drone parts +100%', () => {
+    const d = (hts: string, entryDate: string, answers = {}) => run(hts, 'CN', 10000, { entryDate }, { droneUse: true, ...answers }).lines
+      .filter((x) => x.heading.startsWith('9903.08')).map((x) => `${x.heading}=${x.amount}`);
+    expect(d('8806.22.00.00', '2026-09-02')).toEqual([]);
+    expect(d('8806.22.00.00', '2026-09-03')).toEqual(['9903.08.22=2500']);
+    expect(d('8807.30.00.60', '2027-02-08')).toEqual(['9903.08.20=0']);
+    expect(d('8807.30.00.60', '2027-02-09')).toEqual(['9903.08.22=2500']);
+    expect(d('8807.30.00.60', '2026-11-02', { droneOver25kg: true })).toEqual(['9903.08.21=10000']);
+    expect(d('8807.30.00.60', '2026-11-02', { droneOver25kg: true, droneExceptUse: true })).toEqual(['9903.08.20=0']);
   });
 });
 

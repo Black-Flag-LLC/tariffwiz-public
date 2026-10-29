@@ -200,6 +200,45 @@ describe('fees and guards', () => {
     expect(run('2203.00.00.30', 'CA', 10000, { mode: 'truck', entryDate: '2026-10-01' }, { banPackaged: false }).ok).toBe(true);
     expect(run('0404.10.05.00', 'US', 10000, { entryDate: '2026-10-01' }).ok).toBe(true);
   });
+  it('Section 232 polysilicon from 2026-12-04 (PP 11052; worked examples in references/polysilicon_232.json)', () => {
+    const at = (hts: string, origin: string, value: number, extra: Partial<Input>, answers = {}) =>
+      run(hts, origin, value, { entryDate: '2026-12-10', ...extra }, answers).duty;
+    const docs = { polyDocs: 'resale_at_or_above' };
+    expect(at('8541.43.00.10', 'CN', 45000, { quantity: 1000, quantity2: 450000 })).toBe(205875);          // 1: no documentation
+    expect(at('8541.43.00.10', 'DE', 320000, { quantity: 2000, quantity2: 800000 }, docs)).toBe(80000);     // 2: EU deal, MIP met
+    expect(at('2804.61.00.00', 'DE', 180000, { quantity: 10000 }, docs)).toBe(30000);                     // 3: polysilicon shortfall
+    expect(at('3818.00.00.45', 'MY', 40000, { quantity: 500 })).toBe(56000);                                // 4: wafers, no documentation
+    expect(at('8541.42.00.10', 'IN', 150000, { quantity: 1, quantity2: 1000000 }, { polyDocs: 'pre_aug6_contract' })).toBe(107500); // 5
+    expect(at('8541.43.00.10', 'MX', 70000, { quantity: 1, quantity2: 200000, claim: 'S' }, docs)).toBe(16500);      // 6: USMCA
+    // not before 12:01 a.m. 2026-12-04, and not GaAs wafers (3818.00.0010)
+    expect(headings(run('8541.43.00.10', 'CN', 45000, { entryDate: '2026-12-03', quantity: 1000, quantity2: 450000 }))).not.toContain('9903.45.36');
+    expect(headings(run('3818.00.00.10', 'MY', 40000, { entryDate: '2026-12-10', quantity: 500 })).some((h) => h.startsWith('9903.45.3'))).toBe(false);
+  });
+  it('AGOA ends 2026-12-31 (GN16(c)): the claim is refused for later entries', () => {
+    expect(run('6401.10.00.00', 'KE', 10000, { claim: 'D', entryDate: '2026-12-31' }).duty).toBe(0);
+    const r = run('6401.10.00.00', 'KE', 10000, { claim: 'D', entryDate: '2027-01-04' });
+    expect(r.duty).toBe(3750);
+    expect(r.notes.join(' ')).toMatch(/ended on 2026-12-31/);
+  });
+  it('claim-only programs Y/Z/N are free on any line except their exclusions; Nepal ended 2025-12-31', () => {
+    expect(run('8501.10.40.20', 'MH', 10000, { claim: 'Z' }).duty).toBe(0);
+    expect(run('6110.20.20.20', 'MH', 10000, { claim: 'Z' }).duty).toBe(1650);          // GN10(d) apparel excluded
+    const gu = run('8501.10.40.20', 'GU', 10000, { claim: 'Y' });
+    expect(gu.duty).toBe(0);
+    expect(gu.fees.find((f) => f.heading === 'MPF')?.rate).toBe('exempt');              // 24.23(c)(1)(ii)
+    expect(run('8501.10.40.20', 'JO', 10000, { claim: 'N' }).lines.find((l) => l.family === 'base')!.amount).toBe(440); // not from a zone
+    expect(run('8501.10.40.20', 'JO', 10000, { claim: 'N' }, { qizMade: true }).lines.find((l) => l.family === 'base')!.amount).toBe(0);
+    expect(run('6117.10.60.10', 'NP', 10000, { claim: 'NP' }).duty).toBe(950);
+  });
+  it('mail: formal from 2027-01-20 when Chapter 99 duty applies; no MPF on mail unless Inbound EMS; gifts within $100 free', () => {
+    const m = (value: number, entryDate: string, answers = {}) => run('6110.20.20.20', 'VN', value, { mode: 'mail', entryDate }, answers);
+    expect(m(2000, '2026-11-01').entryType).toBe('11');
+    const late = m(2000, '2027-02-01');
+    expect(late.entryType).toBe('01');
+    expect(late.fees.find((f) => f.heading === 'MPF')?.amount).toBe(0);
+    expect(m(2000, '2027-02-01', { inboundEms: true }).fees.find((f) => f.heading === 'MPF')?.amount).toBe(34.58); // FY2027 minimum
+    expect(m(80, '2026-11-01', { mailGift: true }).total).toBe(0);
+  });
   it('rejects Chapter 98 and 99 numbers typed as the product (they are claims and add-ons, not goods)', () => {
     for (const code of ['9903.88.01', '9817.00.60.00', '9801.00.10.12']) {
       const r = run(code, 'CN', 1000);

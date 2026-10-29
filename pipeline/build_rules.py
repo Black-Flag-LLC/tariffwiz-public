@@ -164,6 +164,15 @@ def build():
     for k in ("n16_k_parts", "n16_g_motorcycle_candidates"):
         lists[f"s232:{k}"] = sorted(set(n232["lists"][k]["codes"]))
     can = json.loads((REF / "canada_note51_changes.json").read_text(encoding="utf-8"))
+    ps = json.loads((REF / "polysilicon_232.json").read_text(encoding="utf-8"))
+    mip_heading = {"polysilicon": "9903.45.33", "ingots_wafers": "9903.45.34", "cells": "9903.45.35", "modules": "9903.45.36"}
+    deal = next(h for h in ps["headings"] if h["internalId"] == "poly_adv_deal15")["origin"]
+    poly = {"from": ps["effective"]["from"][:10], "deal": deal, "uk": ["GB"],
+            "adv": {"general": "9903.45.30", "deal": "9903.45.31", "uk": "9903.45.32"},
+            "cite": "Proclamation 11052 (91 FR 51975), note 42; headings 9903.45.30-.36 as printed (Rev 21 has no note 42 yet)",
+            "groups": [{"id": g["id"], "label": g["id"].replace("_", " "), "codes": g["codes"], "adValorem": g["adValorem15"],
+                        "mip": g["mip"]["usd"], "per": g["mip"]["per"], "heading": mip_heading[g["id"]], "onshoring": g["id"] != "modules"}
+                       for g in ps["productGroups"]]}
     shaded_f = ROOT / "data" / "build" / "shaded_headings.json"
     expired = json.loads(shaded_f.read_text(encoding="utf-8"))["shaded"] if shaded_f.exists() else []
 
@@ -186,8 +195,10 @@ def build():
               "hts": sorted({h.replace(".", "")[:10] for h in o.get("hts", [])}),
               "fr": (o.get("source", {}).get("scope") or {}).get("fr_doc")} for o in ad["orders"] if o.get("hts")]
 
+    # revision and review date are kept from the current file (update_hts.py and mark_reviewed.py move them)
+    prev = json.loads((OUT / "rules.json").read_text(encoding="utf-8"))["meta"] if (OUT / "rules.json").exists() else {}
     rules = {
-        "meta": {"revision": "2026HTSRev21", "checked": "2026-10-28",
+        "meta": {"revision": prev.get("revision", "2026HTSRev21"), "checked": prev.get("checked", "2026-10-28"),
                  "note": "Built by pipeline/build_rules.py from Rev 21 text + us-import-duty references"},
         "groups": {"EU": EU27, "column2": ["BY", "CU", "KP", "RU"]},
         "s301": {"origin": ["CN"], "measures": s301_measures, "exclusions": exclusions},
@@ -214,13 +225,18 @@ def build():
         "nic": {"heading": nic["heading"], "origin": nic["origin"],
                 "schedule": [{"from": r["from"], "to": r["to"], "pct": r["rate"]["pct"]} for r in nic["rateSchedule"]]},
         "expired": expired,
+        "poly": poly,
+        # drones (note 43, PP 11055): start date, the 43(c)(5) parts switch, CBP hold on 9903.08.23/.24 (CSMS #69738151)
+        "n43": {"from": "2026-09-03", "partsFrom": "2027-02-09", "partnerHold": True},
         # dated list changes and import bans researched from the proclamations (references/canada_note51_changes.json)
         "listChanges": [{k: ch[k] for k in ("list", "from", "to", "add", "remove", "source")} for ch in can["changes"]],
         "bans": [{"origin": ["CA"], "from": b["from"], "codes": b["codes"], "question": b["question"], "source": b["source"].split(" (")[0],
                   "label": BAN_LABEL[b["source"].split(" (")[0]]} for b in can["bans"]],
         "cotton": cotton,
         "adcvd": adcvd,
-        "programs": {k: {"name": v["name"], "countries": v.get("countries", []), "in_force": v.get("in_force", False)}
+        "programs": {k: {"name": v["name"], "countries": v.get("countries", []), "in_force": v.get("in_force", False),
+                         **({"to": v["to"]} if v.get("to") else {}),
+                         **{k2: v[k2] for k2 in ("anyLine", "mpfExempt", "excluded", "excludedWhy", "rule", "qiz") if k2 in v}}
                      for k, v in json.loads((REF / "special_programs.json").read_text(encoding="utf-8"))["programs"].items()},
         "lists": lists,
     }

@@ -372,3 +372,8 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3
 .entry .row.wrap .qselect { height: 40px; }
 .eline .tag { font-size: 0.68rem; border: 1px solid var(--line2); border-radius: 6px; padding: 0 4px; color: var(--muted); }
 .lq .qselect { height: 32px; }
+
+/* published tariff actions not yet in the rules (status.json) */
+.stale { margin: 0 0 16px; line-height: 1.45; }
+.stale ul { margin: 6px 0 0; padding-left: 20px; }
+.stale a { color: inherit; text-decoration: underline; }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import { COUNTRIES, countryName, resolveCountry } from './countries';
-import { loadLine, loadPga, loadRules, loadSearch, type Pga } from './data';
+import { loadLine, loadPga, loadRules, loadSearch, loadStatus, type Pga, type Status } from './data';
 import { calculate, ListIndex } from './engine/calc';
 import type { Answers, HtsLine, Input, Line, Mode, Question, Result, Rules } from './engine/types';
 import EntryView from './Entry';
@@ -94,6 +94,7 @@ export default function App() {
   const [form, setForm] = useState<Form>(() => readUrl(settings));
   const [data, setData] = useState<Data | null>(null);
   const [loadError, setLoadError] = useState('');
+  const [status, setStatus] = useState<Status | null>(null);
   const [ready, setReady] = useState(false);
   // the line loaded for a code, kept with that code so a newer pick never shows an older line
   const [loaded, setLoaded] = useState<{ hts: string; line?: HtsLine; fallback: boolean }>();
@@ -124,6 +125,7 @@ export default function App() {
   useEffect(() => {
     loadRules().then(setData).catch(() => setLoadError('The tariff data could not be loaded. Check your connection and reload.'));
     loadPga().then(setPga);
+    loadStatus().then(setStatus);
     loadSearch().then((l) => { buildIndex(l); setReady(true); }).catch(() => setLoadError('Product search could not be loaded. Reload to try again.'));
     if (matchMedia('(min-width: 861px)').matches && !location.search) searchRef.current?.focus();
   }, []);
@@ -158,8 +160,8 @@ export default function App() {
   const claims = useMemo(() => {
     if (!data || !line || !result?.ok) return [];
     return Object.entries(data.rules.programs)
-      .filter(([k, p]) => p.in_force && p.countries.includes(form.origin)
-        && (line.special.some((s) => s.program.replace(/[*+]$/, '') === k) || k === 'S'))
+      .filter(([k, p]) => p.in_force && !(p.to && form.entryDate > p.to) && p.countries.includes(form.origin)
+        && (line.special.some((s) => s.program.replace(/[*+]$/, '') === k) || k === 'S' || !!p.anyLine))
       .map(([code, p]) => {
         const alt = code === form.claim ? null : compute(form, line, data, { claim: code });
         return { code, name: p.name, save: alt?.ok ? result.total - alt.total : 0 };
@@ -253,6 +255,7 @@ export default function App() {
       </header>
       <p className="lede">What you'll pay to bring goods into the US, with every charge explained.</p>
       {loadError && <p className="error banner" role="alert">{loadError}</p>}
+      {status && <StaleBanner s={status} />}
 
       {view === 'entry' && (data
         ? <main><EntryView rules={data.rules} idx={data.idx} today={today()} defaults={{ mode: settings.defaultMode, origin: settings.defaultCountry }} notify={notify} pga={pga} /></main>
@@ -414,6 +417,24 @@ function NumInput({ value, onChange, placeholder, label }: { value: string; onCh
     <input inputMode="decimal" value={draft ?? value} placeholder={placeholder} aria-label={label}
       onFocus={() => setDraft(value)} onBlur={() => setDraft(null)}
       onChange={(e) => { const t = e.target.value.replace(/[^\d.]/g, ''); setDraft(t); if (/^\d*\.?\d*$/.test(t) && t !== '.') onChange(t.replace(/\.$/, '')); }} />
+  );
+}
+
+/** Tariff actions published (or filed for publication) since the rules were last reviewed, and a newer HTS revision.
+ *  Shown on every view so a quote never silently misses a change. */
+function StaleBanner({ s }: { s: Status }) {
+  const rev = s.latestRevision && s.latestRevision.name !== s.revision ? s.latestRevision : null;
+  if (!s.pending.length && !rev) return null;
+  return (
+    <div className="warn stale" role="status">
+      <strong>Not in these results yet.</strong> Quotes for goods these cover may be out of date until they're reviewed and added:
+      <ul>
+        {s.pending.map((p) => (
+          <li key={p.doc}><a href={p.url} target="_blank" rel="noreferrer">{p.title}</a> ({p.inspection ? 'to be published' : 'published'} {fmtDate(p.date)})</li>
+        ))}
+        {rev && <li>Tariff schedule {rev.title}, in force {rev.from}: these results use {s.revision.replace('2026HTSRev', '2026 Revision ')}.</li>}
+      </ul>
+    </div>
   );
 }
 

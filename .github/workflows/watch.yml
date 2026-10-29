@@ -1,7 +1,9 @@
 name: tariff-watch
-# Daily: new HTS revision, Federal Register notices and CBP CSMS messages -> one "Tariff watch" issue (new items only).
-# A new HTS revision also starts the update job: rebuild the data, run tests + heading audit + Census check, open a
-# pull request. Nothing goes live until that pull request is reviewed and merged.
+# Daily: new HTS revision, Federal Register notices (incl. public inspection) and CBP CSMS messages -> one "Tariff watch"
+# issue (new items only), and the site's status banner (app/public/data/status.json: published actions not yet reviewed),
+# redeployed whenever it changes. A new HTS revision starts the update job: rebuild the data, run tests + heading audit +
+# Census check, open a pull request. When nothing in Chapter 99 moved and every check passes it merges and goes live by
+# itself; otherwise it stays a draft ("rule work needed") and the banner tells users what isn't in the results yet.
 on:
   schedule: [{ cron: '17 12 * * *' }]   # daily, 12:17 UTC
   workflow_dispatch:
@@ -21,7 +23,7 @@ jobs:
   watch:
     if: github.repository == 'Zacsluss/tariffwiz'   # the public copy gets this file too; only the source repo watches
     runs-on: ubuntu-latest
-    permissions: { contents: read, issues: write }
+    permissions: { contents: write, issues: write, actions: write }
     outputs:
       new_revision: ${{ steps.w.outputs.new_revision }}
     steps:
@@ -38,7 +40,7 @@ jobs:
       - id: w
         run: |
           set +e
-          python -I pipeline/watch.py --seen seen.txt --json watch.json > report.md; code=$?
+          python -I pipeline/watch.py --seen seen.txt --json watch.json --status app/public/data/status.json > report.md; code=$?
           echo "code=$code" >> "$GITHUB_OUTPUT"
           cat report.md
           if [ -f watch.json ]; then echo "new_revision=$(jq -r '.new_revision // ""' watch.json)" >> "$GITHUB_OUTPUT"; fi
@@ -50,13 +52,23 @@ jobs:
           title="Tariff watch: changes to review"
           n=$(gh issue list --state open --search "$title in:title" --json number -q '.[0].number')
           if [ -n "$n" ]; then gh issue comment "$n" --body-file report.md; else gh issue create --title "$title" --body-file report.md; fi
+      - if: steps.w.outputs.code != '2'
+        name: Publish the status banner when it changed
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          if git diff --quiet app/public/data/status.json; then echo "Status unchanged."; exit 0; fi
+          git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/public/data/status.json
+          git commit -qm "Status: $(jq '.pending | length' app/public/data/status.json) unreviewed tariff action(s)"
+          git pull -q --rebase origin main && git push -q origin HEAD:main
+          gh workflow run publish.yml   # a GITHUB_TOKEN push does not trigger the publish workflow by itself
 
   update:
     needs: watch
     if: needs.watch.outputs.new_revision != '' || inputs.release != ''
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    permissions: { contents: write, pull-requests: write, issues: write }
+    permissions: { contents: write, pull-requests: write, issues: write, actions: write }
     env:
       REL: ${{ inputs.release || needs.watch.outputs.new_revision }}
       GH_TOKEN: ${{ github.token }}
@@ -128,7 +140,12 @@ jobs:
           git add app/public/data
           git commit -qm "HTS $REL: automatic data update" -m "$(jq -r '.reasons | join("; ")' data/build/update_status.json)"
           git push -q --force origin "tariff-update/$REL"
-          if ! gh pr create $draft --base main --head "tariff-update/$REL" --title "$title" --body-file pr.md; then
+          if gh pr create $draft --base main --head "tariff-update/$REL" --title "$title" --body-file pr.md; then
+            # nothing in Chapter 99 moved and every check passed: take it live without waiting for a person
+            if [ -z "$draft" ]; then
+              gh pr merge "tariff-update/$REL" --squash --delete-branch && gh workflow run publish.yml
+            fi
+          else
             # Settings > Actions > General > "Allow GitHub Actions to create and approve pull requests" is off
             echo "Branch pushed but no pull request could be opened. Open it here: ${{ github.server_url }}/${{ github.repository }}/compare/main...tariff-update/$REL" > note.md
             echo >> note.md; cat pr.md >> note.md

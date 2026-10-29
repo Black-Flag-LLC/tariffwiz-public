@@ -33,6 +33,19 @@ export interface PgaFlag { agency: string; agencyName: string; program: string; 
 export interface Pga { flags: Record<string, PgaFlag>; hts: Record<string, string[]>; checked: string }
 let pgaP: Promise<Pga | null> | null = null;
 /** Partner Government Agency flags by HTS (display only). */
+/** Written daily by the tariff-watch workflow (pipeline/watch.py --status): actions published since the rules were reviewed. */
+export interface Status {
+  rulesChecked: string;
+  revision: string;
+  latestRevision: { name: string; title: string; from: string } | null;
+  pending: { doc: string; title: string; type: string; date: string; url: string; inspection: boolean }[];
+}
+let statusP: Promise<Status | null> | null = null;
+export function loadStatus() {
+  statusP ??= fetch(`${BASE}status.json`, { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  return statusP;
+}
+
 export function loadPga() {
   pgaP ??= fetch(`${BASE}pga.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   return pgaP;

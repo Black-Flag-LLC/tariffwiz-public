@@ -12,6 +12,7 @@ const MPF = [
   { from: '2026-10-01', min: 34.58, max: 670.86, informal: 2.77 },
 ];
 const MPF_RATE = 0.003464;
+const MAIL_FORMAL_FROM = '2027-01-20'; // compliance date of 19 CFR 145.12(a)(2)(v)-(vi) (91 FR 66638)
 const SUPPORTED_TO = '2027-06-22'; // 9903.91.05 rises on 2027-06-23 by an amount not yet published
 const HMF_RATE = 0.00125;
 // Programs whose claim exempts MPF (19 U.S.C. 58c(b); fees reference §1.4). Jordan and Morocco are not exempt.
@@ -242,8 +243,23 @@ function computeBase(c: Ctx): Line {
     const match = line.special.find((s) => (s.program === claim || s.program.replace(/[*+]$/, '') === claim) && !/^see /i.test(s.rate?.raw ?? ''));
     if (!prog || !prog.in_force) {
       c.notes.push(`Claim ${claim} ignored: that program is not in force.`);
+    } else if (prog.to && input.entryDate > prog.to) {
+      c.notes.push(`Claim ${claim} ignored: ${prog.name} ended on ${prog.to}.`);
     } else if (!(prog.countries.includes(input.origin) || (prog.countries.includes('*COL1') && !rules.groups.column2.includes(input.origin)))) {
       c.notes.push(`Claim ${claim} ignored: ${input.origin} is not an eligible country for ${prog.name}.`);
+    } else if (prog.anyLine) {
+      // claim-only programs (GSN 3(d)): free on every line except the program's own exclusions
+      const ex = (prog.excluded ?? []).find((x) => line.digits.startsWith(digitsOf(x)));
+      if (ex) c.notes.push(`Claim ${claim} ignored: ${prog.name} excludes this product (${prog.excludedWhy}).`);
+      else if ((prog.qiz ?? []).includes(input.origin) && !ask(c, { id: 'qizMade', kind: 'yesno', defaultValue: false,
+        text: 'Was it made in a designated Qualifying Industrial Zone?', why: `Only goods from a designated zone qualify for ${prog.name}.` }).value)
+        c.notes.push(`Claim ${claim} ignored: from ${input.origin}, only goods made in a Qualifying Industrial Zone qualify.`);
+      else {
+        rate = { kind: 'free', parts: [], raw: 'Free' };
+        program = claim;
+        why = `Free under ${prog.name} (${prog.rule}).`;
+        cite = `HTS General Note 3(d) SPI ${claim}`;
+      }
     } else if ((!match || !match.rate) && line.special.length > 0
       && !(rules.trq.pointers[line.code] ?? rules.trq.pointers[line.code.slice(0, 10)] ?? []).some((x) => x.program.replace(/[*+]$/, '') === claim)) {
       // The line lists special programs, but not this one: the goods don't qualify for it here.
@@ -396,24 +412,52 @@ function section232(c: Ctx): S232 {
 
   // 3. Drones (note 43) — not a country-measure carve-out, so it does not block them.
   // (c)(3) "with thermal imaging" and (c)(4) "without" list the same codes, so thermal must be asked (L232281–232288)
-  const always100 = ['s232:n43_c1_uas', 's232:n43_c2_uas_parts'].some((l) => idx.has(l, h));
+  // From 2026-09-03 (PP 11055). Parts (c)(2) pay 100% only for drones over 25 kg not for retail delivery, farming or the
+  // Department of War; other drone parts are 0% (9903.08.20) until 2027-02-09, then +25% under new 43(c)(5) (Annex IV.B).
+  const n43 = c.rules.n43;
+  const c1 = idx.has('s232:n43_c1_uas', h), parts = idx.has('s232:n43_c2_uas_parts', h);
   const thermalSplit = idx.has('s232:n43_c3_uas_thermal', h) || idx.has('s232:n43_c4_uas_nonthermal', h);
-  if (always100 || thermalSplit) {
+  if ((c1 || parts || thermalSplit) && (!n43 || input.entryDate >= n43.from)) {
     const q = ask(c, { id: 'droneUse', kind: 'yesno', defaultValue: line.digits.startsWith('8806') /* Defaults B (Zac 2026-10-29): parts default to aircraft use */, text: 'Is this a drone (UAS) or a part for one?',
       why: 'Drones pay +25% to +100% under the 2026 drone action; the same codes used for other things do not.' });
-    const thermal = !always100 && q.value ? ask(c, { id: 'droneThermal', kind: 'yesno', defaultValue: false,
-      text: 'Does the drone have a thermal-imaging camera?', why: 'Thermal drones pay +100%; others +25%.' }).value : false;
-    const droneList = always100 || thermal ? 100 : 25;
-    if (q.value) {
-      const cite = 'HTS ch.99 note 43; L232245–232299';
-      const assumed = q.assumed ? { assumed: 'it is for a drone' } : {};
-      if (o === 'GB') lines.push(add232('9903.08.23', 'Drones (UK)', 10, input.value, 'UK drones meeting the components test.', cite,
+    const cite = 'HTS ch.99 note 43; L232245–232299; PP 11055 (91 FR 53699); CSMS #69738151';
+    const notFor = add232('9903.08.20', 'Drones (not for drone use)', 0, input.value, 'Not a drone or for use with one: no drone tariff.', 'HTS ch.99 note 43(c); 9903.08.20');
+    if (!q.value) lines.push(notFor);
+    else {
+      const assumed: Partial<Line> = q.assumed ? { assumed: 'it is for a drone' } : {};
+      let pct = 0;
+      let heading = '9903.08.20';
+      let why = '';
+      if (parts && !c1 && !thermalSplit) {
+        const big = ask(c, { id: 'droneOver25kg', kind: 'yesno', defaultValue: false, text: 'Is it a part for a drone with a maximum take-off weight over 25 kg?',
+          why: 'Parts for large drones pay +100%; parts for small drones pay nothing until 9 Feb 2027, then +25%.' });
+        const except = big.value && ask(c, { id: 'droneExceptUse', kind: 'yesno', defaultValue: false,
+          text: 'Is that drone for retail delivery, agriculture, or sale to the Department of War?',
+          why: 'Large-drone parts for these uses are outside the +100% (note 43(c)(2)).' }).value;
+        if (big.value && !except) { pct = 100; heading = '9903.08.21'; why = 'Part for a drone over 25 kg.'; }
+        else if (n43 && input.entryDate >= n43.partsFrom) {
+          pct = 25; heading = '9903.08.22';
+          why = `Part for a drone ${big.value ? 'used for retail delivery, agriculture or the Department of War' : 'of 25 kg or less'}: +25% from ${n43.partsFrom} (new note 43(c)(5)).`;
+          if (big.value) assumed.interpretation = 'Reads the excepted large-drone uses into (c)(5); no CBP ruling yet.';
+        } else why = 'Part for a drone of 25 kg or less (or an excepted use): no drone tariff before 9 Feb 2027.';
+        if (big.assumed && !assumed.assumed) assumed.assumed = 'drone of 25 kg or less';
+      } else {
+        const thermal = !c1 && ask(c, { id: 'droneThermal', kind: 'yesno', defaultValue: false,
+          text: 'Does the drone have a thermal-imaging camera?', why: 'Thermal drones pay +100%; others +25%.' }).value;
+        pct = c1 || thermal ? 100 : 25;
+        heading = pct === 100 ? '9903.08.21' : '9903.08.22';
+        why = pct === 100 ? 'Drones over 25 kg, docking stations and thermal drones.' : 'Drones of 25 kg or less without thermal imaging.';
+      }
+      if (pct === 0) lines.push(add232(heading, 'Drones (small-drone part)', 0, input.value, why, cite, assumed));
+      else if (n43?.partnerHold || !(o === 'GB' || deal)) {
+        // CBP: do not report 9903.08.23/.24 until Commerce's certification process and CBP guidance issue (CSMS #69738151)
+        if (o === 'GB' || deal) c.notes.push('UK and partner-country drone rates (9903.08.23/.24) cannot be used yet: CBP says not to report them until the components certification and its guidance are issued (CSMS #69738151). The full rate applies.');
+        lines.push(add232(heading, 'Drones', pct, input.value, why, cite, assumed));
+      } else if (o === 'GB') lines.push(add232('9903.08.23', 'Drones (UK)', 10, input.value, 'UK drones meeting the components test.', cite,
         { ...assumed, interpretation: 'Assumes substantially all critical components come from allied countries.' }));
-      else if (deal) lines.push(allInLine(c, '9903.08.24', 'Drones (deal rate)', 15, cite,
-        { ...assumed, interpretation: 'Assumes the allied-components test is met.' }));
-      else lines.push(add232(droneList === 100 ? '9903.08.21' : '9903.08.22', 'Drones', droneList, input.value,
-        droneList === 100 ? 'Drones, docking stations, thermal drones and large-drone parts.' : 'Drones without thermal imaging.', cite, assumed));
-    } else lines.push(add232('9903.08.20', 'Drones (not for drone use)', 0, input.value, 'Not a drone or for use with one: no drone tariff.', 'HTS ch.99 note 43(c); 9903.08.20'));
+      else lines.push(allInLine(c, '9903.08.24', 'Drones (deal rate)', 15, cite, { ...assumed, interpretation: 'Assumes the allied-components test is met.' }));
+      if (input.entryDate < (n43?.partsFrom ?? '')) c.notes.push('Products of companies on the Blue UAS Cleared List or the FCC Conditional Approval List (listed on 2 Sep 2026) start paying on 9 Feb 2027 (PP 11055 cl. 7); no filing heading exists for this yet.');
+    }
   }
 
   // 4–5. Vehicles and vehicle parts (notes 33, 38) — block metals, wood and country measures.
@@ -916,6 +960,55 @@ function craneChinaLink(c: Ctx): Line[] {
 }
 
 /** Note 41: Section 201 safeguard on quartz surface products (countertops, slabs), from 2026-08-15. */
+/** Section 232 polysilicon (Proclamation 11052, note 42, entries from 2026-12-04). Two duties, both on top of every
+ *  other duty and any FTA rate (note 42(b)): an ad valorem duty by origin on wafers, cells and modules (9903.45.30 +15%,
+ *  .31 15% all-in for the deal countries, .32 UK +10%), and a minimum-import-price (MIP) duty per kg or watt
+ *  (.33–.36): the full MIP × quantity without the clause (2)(a) documentation, else only the shortfall below the MIP.
+ *  The heading numbers are as printed in the proclamation; Rev 21 also uses 9903.45.30/.31 for quartz (a LEAD until an
+ *  HTS revision renumbers). Note 52(f) does not name these headings, so note 52 still applies (literal reading). */
+function polysilicon232(c: Ctx): Line[] {
+  const { input, rules } = c;
+  const p = rules.poly;
+  if (!p || input.entryDate < p.from) return [];
+  const g = p.groups.find((x) => x.codes.some((code) => c.line.digits.startsWith(digitsOf(code))));
+  if (!g) return [];
+  if (/0080$/.test(c.line.digits) && ask(c, { id: 'polyThinFilm', kind: 'yesno', defaultValue: false,
+    text: 'Is this a non-silicon thin-film (e.g. CdTe or CIGS) cell or module with no polysilicon?',
+    why: 'Thin-film products without polysilicon may be outside the polysilicon duties; the annex lists the code without saying.' }).value) return [];
+  if (g.onshoring && ask(c, { id: 'polyOnshoring', kind: 'yesno', defaultValue: false,
+    text: 'Is this import within a volume Commerce allotted to your approved polysilicon onshoring plan?',
+    why: 'Allotted volumes under an approved onshoring plan enter free of the polysilicon duties (Proclamation 11052 cl. (6)).' }).value) {
+    c.notes.push('Polysilicon onshoring allotment claimed: no Section 232 polysilicon duty. Keep the Commerce approval with the entry.');
+    return [];
+  }
+  const out: Line[] = [];
+  const cite = p.cite;
+  if (g.adValorem) {
+    if (p.deal.includes(input.origin) || (input.origin !== 'GB' && isEU(rules, input.origin) && p.deal.includes('EU'))) {
+      const r = allIn(c, 15);
+      out.push(add232(p.adv.deal, 'Section 232 polysilicon (deal rate)', r.pct, input.value,
+        'Total duty is set to 15% for this country: the base rate is topped up.', cite, { rate: `15% all-in (+${fmtPct(Number(r.pct.toFixed(4)))})` }));
+    } else if (p.uk.includes(input.origin)) out.push(add232(p.adv.uk, 'Section 232 polysilicon (UK)', 10, input.value, 'UK rate for polysilicon derivatives.', cite));
+    else out.push(add232(p.adv.general, 'Section 232 polysilicon', 15, input.value, 'Polysilicon ingots, wafers, solar cells and modules.', cite));
+  }
+  const docs = ask(c, { id: 'polyDocs', kind: 'choice', defaultValue: 'none',
+    options: [{ value: 'none', label: 'No documentation' }, { value: 'resale_at_or_above', label: 'US resale at or above the minimum price' },
+      { value: 'pre_aug6_contract', label: 'Fixed-price contract signed before 6 Aug 2026' }],
+    text: 'Will you file the minimum-import-price documentation (Proclamation 11052) with this entry?',
+    why: 'Without it the full minimum price is charged as duty; with it, only the amount the entered value falls short of the minimum price.' });
+  const q = unitQty(c, g.per === 'W' ? 'W' : 'kg');
+  const floor = g.mip * q.qty;
+  const amount = docs.value === 'none' ? floor : Math.max(0, floor - input.value);
+  const unit = g.per === 'W' ? 'W' : 'kg';
+  out.push({ family: 's232', heading: g.heading, label: 'Section 232 polysilicon minimum import price', rate: `$${g.mip}/${unit}`, amount: cents(amount),
+    why: !q.known ? `Charged at $${g.mip} per ${unit}: enter the ${g.per === 'W' ? 'total watts' : 'net kilograms'} to price it.`
+      : docs.value === 'none' ? `No documentation: the full minimum price, $${g.mip} × ${q.qty.toLocaleString('en-US')} ${unit}.`
+        : amount > 0 ? `Documented, but the entered value is below the minimum price: the shortfall is charged.`
+          : 'Documented and the entered value meets the minimum price: nothing is charged.',
+    cite, ...(!q.known ? { assumed: `${g.per === 'W' ? 'watts' : 'kilograms'} not entered` } : docs.assumed ? { assumed: 'no documentation' } : {}) });
+  return out;
+}
+
 function quartzSafeguard(c: Ctx): Line[] {
   const { input, rules, idx } = c;
   const n = rules.n41;
@@ -955,7 +1048,11 @@ function fees(c: Ctx, formal: boolean): Line[] {
   if (input.mode === 'mail' && !formal) {
     out.push({ family: 'fee', heading: 'MPF', label: 'Merchandise processing fee', rate: 'none', amount: 0,
       why: 'Mail shipments of $2,500 or less clear on a postal informal entry with no processing fee.', cite: '19 CFR 24.23(c); references/postal.md' });
-  } else if (program && MPF_EXEMPT.has(program)) {
+  } else if (input.mode === 'mail' && !ask(c, { id: 'inboundEms', kind: 'yesno', defaultValue: false, text: 'Is it an Inbound EMS (Express Mail Service) item?',
+    why: 'Formally entered mail pays no processing fee, except Inbound EMS items (19 CFR 24.23(c)(1)(v)).' }).value) {
+    out.push({ family: 'fee', heading: 'MPF', label: 'Merchandise processing fee', rate: 'exempt', amount: 0,
+      why: 'Mail is exempt from the processing fee, even on a formal entry (Inbound EMS excepted).', cite: '19 CFR 24.23(c)(1)(v)' });
+  } else if (program && (MPF_EXEMPT.has(program) || c.rules.programs[program]?.mpfExempt)) {
     out.push({ family: 'fee', heading: 'MPF', label: 'Merchandise processing fee', rate: 'exempt', amount: 0,
       why: `Exempt for goods claimed under ${c.rules.programs[program]?.name ?? program}.`, cite: '19 U.S.C. 58c(b); 19 CFR 24.23(c)' });
   } else if (!formal) {
@@ -1126,6 +1223,7 @@ function calculateCore(input: Input, line: HtsLine | undefined, rules: Rules, id
     ...note50Brazil(c, s232.blocksCountry),
     ...note52(c, s232.blocksCountry),
     ...s232.lines,
+    ...polysilicon232(c),
     ...quartzSafeguard(c),
     ...nicaragua301(c),
     ...agSafeguard(c),
@@ -1163,7 +1261,26 @@ function calculateCore(input: Input, line: HtsLine | undefined, rules: Rules, id
     }
     c.notes.push('AD/CVD goods need a formal type 03 entry, and the importer must file the non-reimbursement certificate (19 CFR 351.402(f)).');
   }
-  const formal = !!input.inEntry || (input.entryValue ?? input.value) > 2500 || exact.length > 0;
+  // mail (references/prelaunch_checks_2026-10-29.md §3): gifts, then which mail needs a formal entry
+  let mailFormal = false;
+  if (input.mode === 'mail') {
+    const alcTob = /^(220[3-8]|24)/.test(line.digits);
+    const limit = ['VI', 'GU', 'AS'].includes(input.origin) ? 200 : 100;
+    const gift = !alcTob && input.value <= limit && ask(c, { id: 'mailGift', kind: 'yesno', defaultValue: false,
+      text: `Is this a bona fide gift from a person abroad, worth $${limit} or less in all to this person today?`,
+      why: 'Gifts within the limit pass free of duty and tax, Chapter 99 included (19 U.S.C. 1321(a)(2)(A); 19 CFR 10.152, 145.32).' }).value;
+    if (gift) {
+      for (const l of lines) Object.assign(l, { amount: 0, why: `${l.why} Not collected: bona fide gift within $${limit}.` });
+      c.notes.push('Gift: passed free of duty and tax without an entry (19 CFR 145.32). Purchases, business parcels, alcohol and tobacco never qualify.');
+    } else if (alcTob) {
+      mailFormal = true;
+      c.notes.push('Alcohol and tobacco sent by mail need a formal entry (19 CFR 145.12(a)(2)(iv)).');
+    } else if (input.entryDate >= MAIL_FORMAL_FROM && (lines.some((l) => l.heading.startsWith('99') && l.amount > 0) || !!c.base.program)) {
+      mailFormal = true;
+      c.notes.push(`From ${MAIL_FORMAL_FROM}, mail carrying Chapter 99 duties or a trade-agreement claim needs a formal entry or the Entry Type 13 test (19 CFR 145.12(a)(2)(v)–(vi); 91 FR 66638).`);
+    }
+  }
+  const formal = !!input.inEntry || (input.entryValue ?? input.value) > 2500 || exact.length > 0 || mailFormal;
   const feeLines = fees(c, formal);
   const entryType: Result['entryType'] = exact.length ? '03' : formal ? '01' : '11';
   valueBracketCheck(c);

@@ -8,7 +8,7 @@ What is automatic (written with --apply):
   - every HTS row: descriptions, units, base rates (general / special / column 2), footnotes -> app/public/data/hts/
   - the offline search index -> app/public/data/search.json
   - the list of expired Chapter 99 headings (yellow shading in the new PDF) -> rules.json "expired"
-  - rules.json meta: revision and checked date
+  - rules.json meta: revision and revisionApplied (not checked: that is the review date, see mark_reviewed.py)
 What is not: Chapter 99 rules come from note text anchored to Rev 21 line numbers (build_rules.py). Any change to
 Chapter 99 rows, shading, list codes or a Change Record line about Chapter 99 sets needs_rule_work, and the report
 lists exactly what changed so the rules can be updated by hand (us-import-duty skill, "New HTS revision").
@@ -179,7 +179,8 @@ def main():
         write_search(a.shards, DATA / "search.json")
         if a.shaded:
             rules["expired"] = sorted(json.loads(a.shaded.read_text(encoding="utf-8"))["shaded"])
-        rules["meta"].update(revision=a.release, checked=today,
+        # meta.checked is NOT moved: it is the date the rules were last reviewed against published actions (mark_reviewed.py)
+        rules["meta"].update(revision=a.release, revisionApplied=today,
                              note=f"HTS rows from {a.release} (pipeline/update_hts.py); Chapter 99 rules from "
                                   f"pipeline/build_rules.py")
         (DATA / "rules.json").write_text(json.dumps(rules, separators=(",", ":")), encoding="utf-8")

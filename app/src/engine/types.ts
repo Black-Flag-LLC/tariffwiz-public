@@ -58,6 +58,11 @@ export interface Rules {
   described: { id: string; heading: string; note: string; country: string | null; hts: string[]; question: string;
     autoYes: string[]; autoNo: string[] }[];
   nic: { heading: string; origin: string[]; schedule: { from: string; to: string | null; pct: number }[] };
+  /** note 43 drones: start, the (c)(5) small-drone parts date, and CBP's hold on the UK/partner headings */
+  n43?: { from: string; partsFrom: string; partnerHold: boolean };
+  /** Section 232 polysilicon (PP 11052, note 42): ad valorem by origin + minimum import price per kg or watt */
+  poly?: { from: string; deal: string[]; uk: string[]; adv: { general: string; deal: string; uk: string }; cite: string;
+    groups: { id: string; label: string; codes: string[]; adValorem: boolean; mip: number; per: 'kg' | 'W'; heading: string; onshoring: boolean }[] };
   expired: string[];
   /** dated changes to `lists`: inside [from, to] a list is the Rev list minus `remove` (exact codes) plus `add` */
   listChanges?: { list: string; from: string | null; to: string | null; add: string[]; remove: string[]; source: string }[];
@@ -65,7 +70,9 @@ export interface Rules {
   bans?: { origin: string[]; from: string; codes: string[]; label: string; question: string | null; source: string }[];
   cotton: Record<string, number>;   // HTS10 digits -> Cotton Board assessment, cents per kg
   adcvd: { case: string; type: 'AD' | 'CVD'; country: string; product: string; hts: string[]; fr: string | null }[];
-  programs: Record<string, { name: string; countries: string[]; in_force: boolean }>;
+  programs: Record<string, { name: string; countries: string[]; in_force: boolean | 'uncertain'; to?: string;
+    /** claim-only programs (Y, Z, N): free on any line except `excluded` prefixes; never printed in the Special column */
+    anyLine?: boolean; mpfExempt?: boolean; excluded?: string[]; excludedWhy?: string; rule?: string; qiz?: string[] }>;
   lists: Record<string, string[]>;
 }
 
@@ -81,6 +88,9 @@ export interface Answers {
   usContent?: number;        // USD value of US content (USMCA vehicles / mobile equipment)
   ukQuota?: boolean;         // UK car entered within the UK vehicle quota
   chipQualifies?: boolean;   // semiconductor meets note 39's technical test
+  polyDocs?: string;         // Proclamation 11052 MIP documentation: 'none' | 'resale_at_or_above' | 'pre_aug6_contract'
+  polyOnshoring?: boolean;   // within a Commerce-approved polysilicon onshoring allotment (cl. (6)(c))
+  polyThinFilm?: boolean;    // non-silicon thin-film cell/module (8541.4x.0080) with no polysilicon
   chipUse?: string;          // 'none' or the note 39(d) end-use heading 9903.79.03–.09
   pharmaType?: 'patented' | 'generic' | 'clinical' | 'other_pharma' | 'not_pharma';
   craneOldContract?: boolean; // STS crane under a sale contract dated before 2025-04-17, entered before 2027-04-18 (9903.91.16)
@@ -94,6 +104,11 @@ export interface Answers {
   truckPart?: boolean;       // a part for a medium/heavy truck or bus (note 38(i))
   oldVehicle?: boolean;      // vehicle made 25+ years before the year of entry
   droneThermal?: boolean;    // drone with thermal imaging
+  mailGift?: boolean;        // mail: bona fide gift within the $100 ($200 from VI/GU/AS) daily limit
+  inboundEms?: boolean;      // mail: an Inbound EMS item (the only formally entered mail that pays MPF)
+  qizMade?: boolean;         // made in a designated Qualifying Industrial Zone (program N, Jordan/Egypt)
+  droneOver25kg?: boolean;   // a part is for a drone with maximum take-off weight over 25 kg (note 43(c)(2))
+  droneExceptUse?: boolean;  // that large drone is for retail delivery, agriculture or sale to the Department of War
   s301Exclusion?: boolean;   // the product matches the Section 301 exclusion's description
   stsCrane?: boolean;        // ship-to-shore gantry crane
   banPackaged?: boolean;     // banned alcohol: packaged for direct consumption (only then is it banned)
