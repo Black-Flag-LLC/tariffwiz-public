@@ -3,7 +3,8 @@ name: publish
 # copy (publish_public.sh) and, once that copy is public, redeploy the site.
 # Needs the secret PUBLIC_REPO_TOKEN: a fine-grained token on Zacsluss/tariffwiz-public with Contents, Workflows (the sync
 # copies .github/workflows) and Actions all read/write. Without it the job only prints a notice (sync by hand with
-# publish_public.sh).
+# publish_public.sh). The preflight step names the missing access: seeing the repo needs only repository access,
+# cloning needs Contents.
 on:
   push:
     branches: [main]
