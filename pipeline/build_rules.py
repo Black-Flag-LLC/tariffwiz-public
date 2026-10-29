@@ -18,6 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # python -I leaves the script folder off sys.path
 from search_index import write_search  # noqa: E402
+from adcvd_rules import adcvd_rules  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 REF = ROOT / ".claude" / "skills" / "us-import-duty" / "references"
@@ -178,22 +179,8 @@ def build():
 
     cot = json.loads((REF / "cotton_fee.json").read_text(encoding="utf-8"))
     cotton = {k: float(v["cents_per_kg"]) for k, v in cot["table"].items()}
-    ad = json.loads((REF / "adcvd.json").read_text(encoding="utf-8"))
-    from collections import Counter, defaultdict
-    by_prefix = defaultdict(Counter)
-    for o in ad["orders"]:
-        by_prefix[o["case"][:5]][o["country"]] += 1
-    fixed = 0
-    for o in ad["orders"]:
-        top, n = by_prefix[o["case"][:5]].most_common(1)[0]
-        if o["country"] != top and n >= 2:
-            o["country"] = top
-            fixed += 1
+    adcvd, fixed = adcvd_rules(json.loads((REF / "adcvd.json").read_text(encoding="utf-8")))
     print("adcvd country fixes:", fixed)
-    adcvd = [{"case": o["case"], "type": o["type"], "country": o["country"],
-              "product": __import__("re").sub(r"\[[A-Za-z]+\]", "", o["product"])[:120],
-              "hts": sorted({h.replace(".", "")[:10] for h in o.get("hts", [])}),
-              "fr": (o.get("source", {}).get("scope") or {}).get("fr_doc")} for o in ad["orders"] if o.get("hts")]
 
     # revision and review date are kept from the current file (update_hts.py and mark_reviewed.py move them)
     prev = json.loads((OUT / "rules.json").read_text(encoding="utf-8"))["meta"] if (OUT / "rules.json").exists() else {}

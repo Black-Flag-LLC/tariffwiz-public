@@ -18,6 +18,7 @@ Prints a Markdown report and exits 1 when something new is found (the workflow t
 A new revision is also taken in by the update job (pipeline/update_hts.py), which opens a pull request.
 """
 import argparse
+import datetime
 import email.utils
 import json
 import re
@@ -122,6 +123,11 @@ def main():
             actions.append(d)
             found.append((f"- {d['date']} (on public inspection) · {d['type']} · [{d['title']}]({d['url']})", d["url"]))
     found += csms(since)
+    # the engine refuses entries after SUPPORTED_TO (calc.ts): say so 45 days ahead, every day until it is moved
+    m = re.search(r"const SUPPORTED_TO = '(\d{4}-\d\d-\d\d)'", (ROOT / "app/src/engine/calc.ts").read_text(encoding="utf-8"))
+    if m and (datetime.date.fromisoformat(m.group(1)) - datetime.date.today()).days <= 45:
+        found.append((f"- **The calculator stops quoting entries after {m.group(1)}** (SUPPORTED_TO in app/src/engine/calc.ts): "
+                      "encode the changes announced from then and move the date.", f"supported-to-{m.group(1)}-{datetime.date.today()}"))
 
     fresh = [line for line, link in found if link not in already]
     print(f"## Tariff watch — rules built from {built}, checked {since}\n")

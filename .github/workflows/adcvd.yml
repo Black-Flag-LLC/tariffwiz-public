@@ -1,0 +1,56 @@
+name: adcvd-refresh
+# Monthly: rebuild the AD/CVD order flags from the Federal Register (pipeline/update_adcvd.py). When orders changed and
+# the tests and heading audit pass, it merges and goes live by itself; otherwise the pull request waits for review.
+on:
+  schedule: [{ cron: '41 11 3 * *' }]   # 3rd of each month, 11:41 UTC
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency: { group: adcvd-refresh, cancel-in-progress: false }
+jobs:
+  refresh:
+    if: github.repository == 'Zacsluss/tariffwiz'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions: { contents: write, pull-requests: write, actions: write }
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - id: r
+        run: |
+          python -I pipeline/update_adcvd.py --status adcvd_report.json
+          if git diff --quiet app/public/data/rules.json; then echo "changed=false" >> "$GITHUB_OUTPUT"; else echo "changed=true" >> "$GITHUB_OUTPUT"; fi
+      - id: checks
+        if: steps.r.outputs.changed == 'true'
+        working-directory: app
+        env: { NO_COLOR: '1', FORCE_COLOR: '0' }
+        run: |
+          set +e
+          npm ci --no-audit --no-fund
+          ok=true
+          npm test > ../test.txt 2>&1 || ok=false
+          npm run audit:headings > ../audit.txt 2>&1 || ok=false
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+          tail -3 ../test.txt ../audit.txt
+      - if: steps.r.outputs.changed == 'true'
+        name: Open the pull request (merge it when every check passed)
+        run: |
+          month=$(date -u +%Y-%m)
+          branch="adcvd-refresh/$month"
+          { echo "## AD/CVD order flags refreshed ($month)"; echo; echo '```json'; cat adcvd_report.json; echo '```'; echo
+            echo "- Golden tests: $(grep -E 'Tests +[0-9]' test.txt | tr -s ' ')"
+            echo "- Heading audit: $(grep -E 'violation shapes' audit.txt | tail -1)"; echo
+            echo "Opened by the adcvd-refresh workflow."; } > pr.md
+          git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add app/public/data/rules.json .claude/skills/us-import-duty/references/adcvd.json
+          git commit -qm "AD/CVD order flags refreshed ($month)"
+          git push -q --force origin "$branch"
+          draft=""; [ "${{ steps.checks.outputs.ok }}" = true ] || draft="--draft"
+          gh pr create $draft --base main --head "$branch" --title "AD/CVD order flags refreshed ($month)" --body-file pr.md
+          if [ -z "$draft" ]; then gh pr merge "$branch" --squash --delete-branch && gh workflow run publish.yml; fi
