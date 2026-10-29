@@ -23,6 +23,14 @@ jobs:
         run: echo "::notice::PUBLIC_REPO_TOKEN is not set; the public copy was not synced. Run publish_public.sh by hand."
       - if: env.GH_TOKEN != ''
         uses: actions/checkout@v4
+        with: { persist-credentials: false }   # else git sends this repo's GITHUB_TOKEN to tariffwiz-public: 403
+      - if: env.GH_TOKEN != ''
+        name: Check the token can reach the public copy
+        run: |
+          gh api repos/Zacsluss/tariffwiz-public -q '"token permissions on tariffwiz-public: \(.permissions)"' \
+            || { echo "::error::PUBLIC_REPO_TOKEN cannot see Zacsluss/tariffwiz-public (repository access)"; exit 1; }
+          git ls-remote "https://x-access-token:${GH_TOKEN}@github.com/Zacsluss/tariffwiz-public.git" HEAD >/dev/null \
+            || { echo "::error::PUBLIC_REPO_TOKEN cannot read the public copy over git (Contents permission)"; exit 1; }
       - if: env.GH_TOKEN != ''
         name: Sync the public copy
         run: |
