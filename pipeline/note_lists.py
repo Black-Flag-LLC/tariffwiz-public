@@ -2,7 +2,8 @@
 usage: python -I pipeline/note_lists.py START END [--codes] [--check CODE ...]
 Prints: header line no, header text, first/last code line, count of codes.
 --check: report which list(s) contain each given 10-digit code by prefix match."""
-import re, sys
+import re
+import sys
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 lines = (ROOT / "data/build/hts_rev21.txt").read_text(encoding="utf-8").split(chr(10))

@@ -35,7 +35,7 @@ def main():
         if not words:
             continue
         rects = [d["rect"] for d in page.get_drawings() if is_yellow(d.get("fill"))]
-        for x0, y0, x1, y1, text, *_ in words:
+        for _x0, y0, _x1, y1, text, *_ in words:
             mid = (y0 + y1) / 2
             (shaded if any(r.y0 - 1 <= mid <= r.y1 + 1 for r in rects) else unshaded).add(text)
     unshaded -= shaded

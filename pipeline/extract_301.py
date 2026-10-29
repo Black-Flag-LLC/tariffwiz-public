@@ -111,7 +111,7 @@ def body(L, a, b):
 
 def grid_codes(L, a, b):
     codes, lines = [], 0
-    for i, s in body(L, a, b):
+    for _i, s in body(L, a, b):
         if RE_GRID.match(s):
             codes += RE_C8.findall(s)
             lines += 1

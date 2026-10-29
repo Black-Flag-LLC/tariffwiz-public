@@ -1,6 +1,7 @@
 """Print Ch.99 heading rows (htsno, general/special/other, description) for a heading range.
 usage: python -I pipeline/ch99_rows.py 9903.04.60 9903.04.70 [--full]"""
-import json, sys
+import json
+import sys
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 rows = json.load(open(ROOT / "data/raw/usitc/current/ch99.json", encoding="utf-8"))
