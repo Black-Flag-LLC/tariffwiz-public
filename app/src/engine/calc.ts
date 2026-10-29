@@ -245,7 +245,7 @@ function civilAircraftCarveOut(c: Ctx): string | null {
     TW: ['s232:n35_c_tw_aircraft', '9903.96.03'] };
   const l = lists[c.input.origin];
   if (!l || !c.idx.has(l[0], c.input.hts)) return null;
-  return ask(c, { ...aircraftQ, defaultValue: c.base.program === 'C' }).value ? l[1] : null;
+  return ask(c, { ...aircraftQ, defaultValue: civilDefault(c) }).value ? l[1] : null;
 }
 
 function allIn(c: Ctx, target: number): { pct: number; amount: number } {
@@ -288,7 +288,7 @@ function section232(c: Ctx): S232 {
 
   // 1. Semiconductors (note 39). Every code on the list files one of 9903.79.01–.09, even at 0%.
   if (idx.has('s232:n39_b_semis', h)) {
-    const q = ask(c, { id: 'chipQualifies', kind: 'yesno', defaultValue: false,
+    const q = ask(c, { id: 'chipQualifies', kind: 'yesno', defaultValue: false, // Defaults B: lopsided no (Census Aug 2026: ~2.3% of $46B of listed computer value paid it)
       text: 'Does it contain a logic chip in the note 39 performance window?',
       why: 'Qualifying semiconductors pay +25% under Section 232 unless a US end use applies; others pay nothing extra.' });
     const cite = 'HTS ch.99 note 39; L231833–231955';
@@ -337,7 +337,7 @@ function section232(c: Ctx): S232 {
   const always100 = ['s232:n43_c1_uas', 's232:n43_c2_uas_parts'].some((l) => idx.has(l, h));
   const thermalSplit = idx.has('s232:n43_c3_uas_thermal', h) || idx.has('s232:n43_c4_uas_nonthermal', h);
   if (always100 || thermalSplit) {
-    const q = ask(c, { id: 'droneUse', kind: 'yesno', defaultValue: line.chapter === '88', text: 'Is this a drone (UAS) or a part for one?',
+    const q = ask(c, { id: 'droneUse', kind: 'yesno', defaultValue: line.digits.startsWith('8806') /* Defaults B (Zac 2026-10-29): parts default to aircraft use */, text: 'Is this a drone (UAS) or a part for one?',
       why: 'Drones pay +25% to +100% under the 2026 drone action; the same codes used for other things do not.' });
     const thermal = !always100 && q.value ? ask(c, { id: 'droneThermal', kind: 'yesno', defaultValue: false,
       text: 'Does the drone have a thermal-imaging camera?', why: 'Thermal drones pay +100%; others +25%.' }).value : false;
@@ -671,7 +671,7 @@ function note50Brazil(c: Ctx, blocked232: boolean): Line[] {
   const d50 = describedExempt(c, '50');
   if (d50) return z(d50, 'Matches a product described in the note 50 exemptions.');
   if (infoMaterial(c)) return z('9903.05.09', 'Informational materials are exempt.');
-  if (idx.has('n50:iv_aircraft', input.hts) && ask(c, { ...aircraftQ, defaultValue: c.base.program === 'C' }).value) return z('9903.05.05', 'Civil-aircraft use claimed.');
+  if (idx.has('n50:iv_aircraft', input.hts) && ask(c, { ...aircraftQ, defaultValue: civilDefault(c) }).value) return z('9903.05.05', 'Civil-aircraft use claimed.');
   if (idx.has('n50:v_pharma', input.hts) && ask(c, { ...pharmaAppQ, defaultValue: c.base.program === 'K' }).value) return z('9903.05.06', 'For pharmaceutical applications.');
   return [{ family: 's301_brazil', heading: n.heading, label: 'Section 301 Brazil', rate: `+${fmtPct(n.pct)}`, amount: cents((input.value * n.pct) / 100),
     why: 'Section 301 action on Brazil (from 22 Jul 2026).', cite: 'HTS ch.99 note 50; FR Doc 2026-14542' }];
@@ -702,6 +702,9 @@ function infoMaterial(c: Ctx): boolean {
     why: 'Informational materials are exempt from this country tariff.' }).value;
 }
 
+/** Defaults B (Zac 2026-10-29, Census Aug 2026): aircraft (8802), their engines (8407.10, 8411) and parts (8803, 8807, 8409.10)
+ *  entered almost entirely as civil aircraft; a C claim is that declaration too. */
+const civilDefault = (c: Ctx) => c.base.program === 'C' || ['8802', '8803', '8807', '8411', '840710', '840910'].some((p) => c.line.digits.startsWith(p));
 const aircraftQ = { id: 'civilAircraft' as const, kind: 'yesno' as const, defaultValue: false,
   text: 'Is this for use in civil aircraft (claimed under GN 6)?', why: 'Civil-aircraft goods are exempt from some country tariffs.' };
 const pharmaAppQ = { id: 'pharmaApplication' as const, kind: 'yesno' as const, defaultValue: false,
@@ -732,7 +735,7 @@ function note52(c: Ctx, blocked232: boolean): Line[] {
     return z(e.heading, 'Product is on this country\'s exemption list.');
   }
   if (infoMaterial(c)) return z('9903.05.92', 'Informational materials are exempt.');
-  if (idx.has('n52:d_aircraft', input.hts) && ask(c, { ...aircraftQ, defaultValue: c.base.program === 'C' }).value) return z('9903.05.88', 'Civil-aircraft use claimed.');
+  if (idx.has('n52:d_aircraft', input.hts) && ask(c, { ...aircraftQ, defaultValue: civilDefault(c) }).value) return z('9903.05.88', 'Civil-aircraft use claimed.');
   if (idx.has('n52:e_pharma', input.hts) && ask(c, { ...pharmaAppQ, defaultValue: c.base.program === 'K' }).value) return z('9903.05.89', 'For pharmaceutical applications.');
   const cite = 'HTS ch.99 note 52; USTR action 2026-07-23; CSMS #69326983';
   if (k.rule === 'all_in' && k.target !== null) {
@@ -754,7 +757,7 @@ function note51Canada(c: Ctx, blocked232: boolean): Line[] {
   if (!n.origin.includes(input.origin) || input.entryDate < n.from) return [];
   const z = (heading: string, why: string): Line[] => [{ family: 's338', heading, label: 'Section 338 Canada (not applied)', rate: 'exempt', amount: 0, why, cite: 'HTS ch.99 note 51' }];
   const covered = n.measures.find((m) => idx.has(m.list, input.hts));
-  if (covered && idx.has('n51:16_aircraft', input.hts) && ask(c, { ...aircraftQ, defaultValue: c.base.program === 'C' }).value) return z('9903.03.16', 'Civil-aircraft articles are exempt.');
+  if (covered && idx.has('n51:16_aircraft', input.hts) && ask(c, { ...aircraftQ, defaultValue: civilDefault(c) }).value) return z('9903.03.16', 'Civil-aircraft articles are exempt.');
   for (const m of n.measures) {
     if (!idx.has(m.list, input.hts)) continue;
     if (m.blockedBy232 && blocked232) return z('9903.03.15', 'Goods subject to Section 232 are exempt.');
