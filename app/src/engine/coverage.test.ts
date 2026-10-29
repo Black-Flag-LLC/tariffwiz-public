@@ -119,6 +119,17 @@ describe('Section 232 narrow headings (narrow_232.json)', () => {
     const r = run('0406.10.08.00', 'AU', 10000, { claim: 'AU' }, { ftaInQuota: true });
     expect(lineOf(r, '9822.04.35')).toBeTruthy();
   });
+  // found by the Census Aug 2026 validation (scripts/validate_census.ts)
+  it('pharma claim K from Ireland: free base, note 52 pharma exemption, 0% total like CBP collected', () => {
+    const r = run('2933.99.53.00', 'IE', 10000, { claim: 'K' });
+    expect(r.duty).toBe(0);
+    expect(lineOf(r, '9903.05.89')).toBeTruthy();
+  });
+  it('import adjustment offset reduces the Section 232 auto-parts duty', () => {
+    const full = run('8708.29.51.90', 'VN', 10000, {}, { vehiclePart: true });
+    const off = run('8708.29.51.90', 'VN', 10000, {}, { vehiclePart: true, autoOffset: 1000 });
+    expect(lineOf(full, '9903.94.05')!.amount - lineOf(off, '9903.94.05')!.amount).toBe(1000);
+  });
   it('works truck (not a road vehicle) → 9903.74.05, no truck tariff', () => {
     const code = firstLeaf('s232:n38_b_mhdv');
     const r = run(code, 'DE', 50000, {}, { isMhdv: false, metalWeight15: false });

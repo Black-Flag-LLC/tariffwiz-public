@@ -187,7 +187,7 @@ function computeBase(c: Ctx): Line {
     const match = line.special.find((s) => (s.program === claim || s.program.replace(/[*+]$/, '') === claim) && !/^see /i.test(s.rate?.raw ?? ''));
     if (!prog || !prog.in_force) {
       c.notes.push(`Claim ${claim} ignored: that program is not in force.`);
-    } else if (!prog.countries.includes(input.origin)) {
+    } else if (!(prog.countries.includes(input.origin) || (prog.countries.includes('*COL1') && !rules.groups.column2.includes(input.origin)))) {
       c.notes.push(`Claim ${claim} ignored: ${input.origin} is not an eligible country for ${prog.name}.`);
     } else if ((!match || !match.rate) && line.special.length > 0
       && !(rules.trq.pointers[line.code] ?? rules.trq.pointers[line.code.slice(0, 10)] ?? []).some((x) => x.program.replace(/[*+]$/, '') === claim)) {
@@ -245,7 +245,7 @@ function civilAircraftCarveOut(c: Ctx): string | null {
     TW: ['s232:n35_c_tw_aircraft', '9903.96.03'] };
   const l = lists[c.input.origin];
   if (!l || !c.idx.has(l[0], c.input.hts)) return null;
-  return ask(c, aircraftQ).value ? l[1] : null;
+  return ask(c, { ...aircraftQ, defaultValue: c.base.program === 'C' }).value ? l[1] : null;
 }
 
 function allIn(c: Ctx, target: number): { pct: number; amount: number } {
@@ -262,6 +262,17 @@ function allInLine(c: Ctx, heading: string, label: string, target: number, cite:
   return { family: 's232', heading, label, rate: `${fmtPct(target)} all-in (+${fmtPct(Number(r.pct.toFixed(4)))})`, amount: cents(r.amount),
     why: `Total duty is set to ${fmtPct(target)}: the base rate (${fmtPct(Number(c.base.avePct.toFixed(4)))}) is topped up by ${fmtPct(Number(r.pct.toFixed(4)))}.`,
     cite, ...extra };
+}
+
+/** 33(g) / 38(i): the parts duty is "subject to a manufacturer's import adjustment offset amount" set by Commerce
+ *  (Procl. 10925 autos, 10984 trucks). The importer applies its own offset dollars; we reduce that line by them. */
+function applyOffset(c: Ctx, l: Line | undefined, procl: string) {
+  if (!l || !(l.amount > 0)) return;
+  const q = ask(c, { id: 'autoOffset', kind: 'number', money: true, defaultValue: 0,
+    text: 'Import adjustment offset you will apply to this line (USD)?',
+    why: `Vehicle makers with a Commerce offset (${procl}) can reduce the Section 232 parts duty; leave 0 if you have none.` });
+  const off = Math.min(q.value, l.amount);
+  if (off > 0) { l.amount = cents(l.amount - off); l.why += ` Reduced by a $${off.toLocaleString('en-US')} import adjustment offset (${procl}).`; }
 }
 
 function section232(c: Ctx): S232 {
@@ -410,6 +421,7 @@ function section232(c: Ctx): S232 {
       : allInLine(c, pair[1], 'Section 232 auto parts (deal rate)', 15, vehCite));
     else if (usmca) lines.push(add232('9903.94.06', 'Section 232 auto parts (USMCA)', 0, input.value, 'USMCA-qualifying auto parts: no additional duty.', vehCite));
     else lines.push(add232('9903.94.05', 'Section 232 auto parts', 25, input.value, 'Auto parts on the note 33(g) list.', vehCite));
+    applyOffset(c, lines[lines.length - 1], 'Proclamation 10925');
     // also on the 38(i) truck-parts list: a car part still declares the truck list's "not covered" heading
     if (idx.has('s232:n38_i_mhdv_parts', h))
       lines.push(add232('9903.74.11', 'Section 232 truck parts (not a truck part)', 0, input.value, 'A car or light-truck part, not a medium/heavy truck or bus part.', 'HTS ch.99 note 38(l); L231828–231829'));
@@ -444,6 +456,7 @@ function section232(c: Ctx): S232 {
     lines.push(usmca
       ? add232('9903.74.10', 'Section 232 truck parts (USMCA)', 0, input.value, 'USMCA-qualifying truck parts: no additional duty.', mhdvCite)
       : add232('9903.74.08', 'Section 232 truck parts', 25, input.value, 'Medium/heavy truck parts on the note 38(i) list.', mhdvCite));
+    applyOffset(c, lines[lines.length - 1], 'Proclamation 10984');
     return { lines, blocksCountry: true };
   }
 
@@ -658,8 +671,8 @@ function note50Brazil(c: Ctx, blocked232: boolean): Line[] {
   const d50 = describedExempt(c, '50');
   if (d50) return z(d50, 'Matches a product described in the note 50 exemptions.');
   if (infoMaterial(c)) return z('9903.05.09', 'Informational materials are exempt.');
-  if (idx.has('n50:iv_aircraft', input.hts) && ask(c, aircraftQ).value) return z('9903.05.05', 'Civil-aircraft use claimed.');
-  if (idx.has('n50:v_pharma', input.hts) && ask(c, pharmaAppQ).value) return z('9903.05.06', 'For pharmaceutical applications.');
+  if (idx.has('n50:iv_aircraft', input.hts) && ask(c, { ...aircraftQ, defaultValue: c.base.program === 'C' }).value) return z('9903.05.05', 'Civil-aircraft use claimed.');
+  if (idx.has('n50:v_pharma', input.hts) && ask(c, { ...pharmaAppQ, defaultValue: c.base.program === 'K' }).value) return z('9903.05.06', 'For pharmaceutical applications.');
   return [{ family: 's301_brazil', heading: n.heading, label: 'Section 301 Brazil', rate: `+${fmtPct(n.pct)}`, amount: cents((input.value * n.pct) / 100),
     why: 'Section 301 action on Brazil (from 22 Jul 2026).', cite: 'HTS ch.99 note 50; FR Doc 2026-14542' }];
 }
@@ -719,8 +732,8 @@ function note52(c: Ctx, blocked232: boolean): Line[] {
     return z(e.heading, 'Product is on this country\'s exemption list.');
   }
   if (infoMaterial(c)) return z('9903.05.92', 'Informational materials are exempt.');
-  if (idx.has('n52:d_aircraft', input.hts) && ask(c, aircraftQ).value) return z('9903.05.88', 'Civil-aircraft use claimed.');
-  if (idx.has('n52:e_pharma', input.hts) && ask(c, pharmaAppQ).value) return z('9903.05.89', 'For pharmaceutical applications.');
+  if (idx.has('n52:d_aircraft', input.hts) && ask(c, { ...aircraftQ, defaultValue: c.base.program === 'C' }).value) return z('9903.05.88', 'Civil-aircraft use claimed.');
+  if (idx.has('n52:e_pharma', input.hts) && ask(c, { ...pharmaAppQ, defaultValue: c.base.program === 'K' }).value) return z('9903.05.89', 'For pharmaceutical applications.');
   const cite = 'HTS ch.99 note 52; USTR action 2026-07-23; CSMS #69326983';
   if (k.rule === 'all_in' && k.target !== null) {
     if (c.base.avePct >= k.target)
@@ -741,7 +754,7 @@ function note51Canada(c: Ctx, blocked232: boolean): Line[] {
   if (!n.origin.includes(input.origin) || input.entryDate < n.from) return [];
   const z = (heading: string, why: string): Line[] => [{ family: 's338', heading, label: 'Section 338 Canada (not applied)', rate: 'exempt', amount: 0, why, cite: 'HTS ch.99 note 51' }];
   const covered = n.measures.find((m) => idx.has(m.list, input.hts));
-  if (covered && idx.has('n51:16_aircraft', input.hts) && ask(c, aircraftQ).value) return z('9903.03.16', 'Civil-aircraft articles are exempt.');
+  if (covered && idx.has('n51:16_aircraft', input.hts) && ask(c, { ...aircraftQ, defaultValue: c.base.program === 'C' }).value) return z('9903.03.16', 'Civil-aircraft articles are exempt.');
   for (const m of n.measures) {
     if (!idx.has(m.list, input.hts)) continue;
     if (m.blockedBy232 && blocked232) return z('9903.03.15', 'Goods subject to Section 232 are exempt.');

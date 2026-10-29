@@ -81,6 +81,7 @@ export interface Answers {
   pharmaType?: 'patented' | 'generic' | 'clinical' | 'other_pharma' | 'not_pharma';
   craneOldContract?: boolean; // STS crane under a sale contract dated before 2025-04-17, entered before 2027-04-18 (9903.91.16)
   japanLeather?: boolean;    // Japanese leather is dyed/colored/stamped/embossed, or footwear is not an excluded type (9903.41.05/.10)
+  autoOffset?: number;       // USD of a manufacturer's import adjustment offset applied to this line (Procl. 10925 / 10984)
   infoMaterial?: boolean;    // informational materials (publications, films, recordings, artworks): note 50/52 exempt
   droneUse?: boolean;        // the article is a drone (UAS) or for use with one
   civilAircraft?: boolean;   // civil-aircraft treatment claimed
