@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import './App.css';
 import { COUNTRIES, countryName, resolveCountry } from './countries';
 import { loadLine, loadPga, loadRules, loadSearch, loadStatus, type Pga, type Status } from './data';
+import { likelyAgencies } from './agencies';
 import { calculate, ListIndex } from './engine/calc';
 import type { Answers, HtsLine, Input, Line, Mode, Question, Result, Rules } from './engine/types';
 import EntryView from './Entry';
@@ -715,7 +716,7 @@ function Agencies({ pga, code }: { pga: Pga | null; code: string }) {
   const flags = [...new Set(keys.flatMap((k) => pga.hts[k] ?? []))].map((f) => ({ code: f, ...pga.flags[f] })).filter((f) => f.agency);
   if (!flags.length && !fdaHint) return (
     <div className="agencies none"><div className="label">Other agencies</div>
-      <p>No partner-agency flags found for this code in the public lists. Some agencies (FDA among them) don't publish complete lists, so check if your product is food, a drug, a device, a cosmetic, a vehicle or a chemical.</p></div>
+      <p>No partner-agency flags found for this code in the public lists. Some agencies (FDA among them) don't publish complete lists, so check if your product is food, a drug, a device, a cosmetic, a vehicle, a chemical or a pesticide.</p></div>
   );
   const byAgency = new Map<string, typeof flags>();
   for (const f of flags) byAgency.set(f.agency, [...(byAgency.get(f.agency) ?? []), f]);
@@ -864,24 +865,6 @@ function GearIcon() {
       <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
     </svg>
   );
-}
-
-/** Agencies whose public HTS flag lists are missing or stale: hint by product type (labelled as a hint, never as a flag). */
-function likelyAgencies(d: string): { agency: string; name: string; text: string; url: string }[] {
-  const ch = Number(d.slice(0, 2));
-  const out: { agency: string; name: string; text: string; url: string }[] = [];
-  const fda = { agency: 'FDA', name: 'Food and Drug Administration', url: 'https://www.fda.gov/industry/import-program-food-and-drug-administration-fda' };
-  if ((ch >= 1 && ch <= 24 && ch !== 6) || ch === 21) out.push({ ...fda, text: 'Food and drink need FDA prior notice (facility registration for the maker) and may be examined.' });
-  else if (ch === 30) out.push({ ...fda, text: 'Drugs need FDA listing and approval.' });
-  else if (ch === 33) out.push({ ...fda, text: 'Cosmetics are FDA-regulated (facility registration and product listing).' });
-  else if (/^90(18|19|20|21|22)/.test(d)) out.push({ ...fda, text: 'Medical devices need FDA registration and listing.' });
-  else if (/^(8516|8528|8539|8543|9013)/.test(d)) out.push({ ...fda, text: 'Electronics that emit radiation (microwaves, TVs, lasers) need FDA radiation-safety reporting.' });
-  if (/^22(03|04|05|06|08)/.test(d) || ch === 24) out.push({ agency: 'TTB', name: 'Alcohol and Tobacco Tax and Trade Bureau', text: 'Importer permit, label approval (COLA) for alcohol; tobacco permits.', url: 'https://www.ttb.gov/importers' });
-  if (/^(8703|8704|8711|8407|8408)/.test(d)) {
-    out.push({ agency: 'EPA', name: 'Environmental Protection Agency', text: 'Vehicles and engines need EPA emissions conformity (EPA Form 3520-1 or 3520-21).', url: 'https://www.epa.gov/importing-vehicles-and-engines' });
-    if (/^(8703|8704|8711)/.test(d)) out.push({ agency: 'NHTSA', name: 'National Highway Traffic Safety Administration', text: 'Vehicles need safety-standard conformity (HS-7 declaration).', url: 'https://www.nhtsa.gov/importing-vehicle' });
-  }
-  return out;
 }
 
 // arrow keys move between options in any button radiogroup (WAI-ARIA radio pattern)
