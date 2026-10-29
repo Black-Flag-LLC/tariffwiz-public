@@ -51,7 +51,8 @@ button { cursor: pointer; }
 
 /* header */
 .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; position: sticky; top: 0; z-index: 10;
-  padding: 12px 0; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  padding: 12px 0; background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(10px); }
+/* unprefixed only: with both written, the CSS minifier kept just -webkit- and Chrome lost the blur */
 .topright { display: flex; align-items: center; gap: 8px; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 680; font-size: 19px; letter-spacing: -0.02em; }
 .logo { width: 30px; height: 30px; }
@@ -280,7 +281,7 @@ details[open] .chev { transform: rotate(90deg); }
 @media (max-width: 560px) { .viewswitch { margin-left: 0; order: 3; } }
 main[hidden] { display: none !important; }
 .entry { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: var(--gap); align-items: start; }
-@media (max-width: 1100px) { .entry { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .entry { grid-template-columns: minmax(0, 1fr); } }
 .entry .actions { display: flex; gap: 6px; }
 .row.wrap { flex-wrap: wrap; align-items: flex-end; }
 .field.narrow { flex: 0 1 170px; }
@@ -310,7 +311,7 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3
 .agencies-entry li { padding: 5px 0; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
 /* ---------- entry layout v2: editor full width, results beside it only on very wide screens ---------- */
-.entry { grid-template-columns: 1fr; }
+.entry { grid-template-columns: minmax(0, 1fr); }   /* minmax: the column may shrink below its content on phones */
 @media (min-width: 1500px) { .entry { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
 .entry .row.wrap { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; }
 .entry .row.wrap > .field { margin-bottom: 0; }
@@ -318,6 +319,13 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3
 .entry .row.wrap .seg { flex-wrap: nowrap; }
 .entry .row.wrap > .field.narrow { flex: 0 0 170px; }
 .entry .toggle.compact { margin: 0; align-self: center; }
+/* phones: the settings stack full width (.row turns into a column below 480px) and the transport buttons wrap */
+@media (max-width: 480px) {
+  .entry .row.wrap { align-items: stretch; gap: 12px; }
+  .entry .row.wrap > .field, .entry .row.wrap > .field:first-child, .entry .row.wrap > .field.narrow { flex: 0 0 auto; }
+  .entry .row.wrap .seg { flex-wrap: wrap; }
+  .entry .toggle.compact { align-self: flex-start; }
+}
 
 /* ---------- entry lines v3: responsive grid, nothing squeezed, no sideways scroll ---------- */
 .entrygrid { margin-top: 16px; }

@@ -148,4 +148,11 @@ describe('fees and guards', () => {
     expect(run('9503.00.00.90', 'TH', 1000, { entryDate: '2026-01-15' }).ok).toBe(false);
     expect(run('0000.00.00.00', 'TH', 1000).ok).toBe(false);
   });
+  it('rejects Chapter 98 and 99 numbers typed as the product (they are claims and add-ons, not goods)', () => {
+    for (const code of ['9903.88.01', '9817.00.60.00', '9801.00.10.12']) {
+      const r = run(code, 'CN', 1000);
+      expect(r.ok).toBe(false);
+      expect(r.error).toMatch(/product's own code/);
+    }
+  });
 });

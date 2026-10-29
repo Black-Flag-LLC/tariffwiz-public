@@ -1015,6 +1015,10 @@ function calculateCore(input: Input, line: HtsLine | undefined, rules: Rules, id
   };
   if (!realDate(input.entryDate)) return { ...empty, line, error: 'Enter a real entry date (YYYY-MM-DD).' };
   if (line.digits.length < 8) return { ...empty, line, error: `${line.code} is a heading, not a tariff line: pick an 8- or 10-digit code.` };
+  // Ch.99 numbers are add-on duties the engine files itself; Ch.98 numbers are claimed beside the goods' own code
+  // (note 52 and the other country notes treat them differently from goods), so neither can stand in for a product.
+  if (line.chapter === '99') return { ...empty, line, error: `${line.code} is a Chapter 99 number (an additional duty), not a product. Enter the product's own code from chapters 1–97; its Chapter 99 numbers are added automatically.` };
+  if (line.chapter === '98') return { ...empty, line, error: `${line.code} is a Chapter 98 provision, not a product. Enter the product's own code from chapters 1–97; US goods returned, repairs and US-component assembly (9801.00.10, 9802.00.50, 9802.00.80) can be claimed per line in the Entry view.` };
   if (input.loadingDate && !realDate(input.loadingDate)) return { ...empty, line, error: 'Enter a real loading date (YYYY-MM-DD).' };
   if (input.loadingDate && input.loadingDate > input.entryDate) return { ...empty, line, error: 'The loading date is after the entry date.' };
   for (const q of [input.quantity, input.quantity2]) if (q !== undefined && !(Number.isFinite(q) && q >= 0))

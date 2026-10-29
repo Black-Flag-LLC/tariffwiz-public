@@ -419,7 +419,8 @@ function NumInput({ value, onChange, placeholder, label }: { value: string; onCh
 function MoneyInput({ id, value, onChange, inputRef, placeholder = '10,000' }: { id?: string; value: string; onChange: (v: string) => void;
   inputRef?: React.Ref<HTMLInputElement>; placeholder?: string }) {
   const [draft, setDraft] = useState<string | null>(null); // raw text while focused ("12k" is fine)
-  const shown = draft ?? (value ? Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '');
+  const n = Number(value); // a share link can carry anything: show nothing rather than "NaN"
+  const shown = draft ?? (value && Number.isFinite(n) ? n.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '');
   return (
     <div className="money">
       <span aria-hidden="true">$</span>
