@@ -354,7 +354,8 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3
 /* phones: three rows */
 @container (max-width: 480px) {
   .eline { grid-template-columns: 18px repeat(4, minmax(0, 1fr));
-    grid-template-areas: "n hts hts hts hts" "n cty val val spi" "n q1 q2 duty act" "n full full full full"; }
+    grid-template-areas: "n hts hts hts hts" "n cty val val spi" "n q1 q2 duty duty" "n act act act act" "n full full full full"; }
+  .eline .c-act { padding-top: 0; }
 }
 .qselect { height: 38px; max-width: 100%; padding: 0 10px; border: 1px solid var(--line2); border-radius: 10px; background: var(--panel); color: inherit; font: inherit; }
 .qselect:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
