@@ -1,6 +1,6 @@
 name: publish
 # After every push to main (including a merged tariff-update pull request): mirror the shippable files into the public
-# copy (publish_public.sh) and, once that copy is public, redeploy the site.
+# copy (publish_public.sh) and, once GitHub Pages is on for that copy, redeploy the site.
 # Needs the secret PUBLIC_REPO_TOKEN: a fine-grained token (resource owner Black-Flag-LLC, approved by an org admin, at most
 # 366 days) on Black-Flag-LLC/tariffwiz-public with Contents, Workflows (the sync
 # copies .github/workflows) and Actions all read/write. Without it the job only prints a notice (sync by hand with
@@ -41,10 +41,11 @@ jobs:
           git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
           bash publish_public.sh "Sync: $(git log -1 --format=%s)"
       - if: env.GH_TOKEN != ''
-        name: Redeploy the site (only once the copy is public)
+        name: Redeploy the site (only once it is live; the first deploy is part of launch)
         run: |
-          if [ "$(gh repo view Black-Flag-LLC/tariffwiz-public --json visibility -q .visibility)" = PUBLIC ]; then
+          # the token has no Pages permission, so ask the site itself: 200 once the first deploy has happened
+          if [ "$(curl -s -o /dev/null -w '%{http_code}' https://black-flag-llc.github.io/tariffwiz-public/)" = 200 ]; then
             gh workflow run ci.yml -R Black-Flag-LLC/tariffwiz-public -f deploy=true
           else
-            echo "Public copy is still private (pre-launch): synced, not deployed."
+            echo "GitHub Pages is not on for the public copy yet (pre-launch): synced, not deployed."
           fi
