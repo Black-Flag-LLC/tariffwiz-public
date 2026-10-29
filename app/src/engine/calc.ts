@@ -32,6 +32,26 @@ export class ListIndex {
   constructor(lists: Record<string, string[]>) {
     for (const [k, codes] of Object.entries(lists)) this.sets.set(k, new Set(codes.map(digitsOf)));
   }
+  private views = new Map<string, ListIndex>();
+  /** The lists in force on an entry date, with dated changes applied (cached per set of changes). */
+  at(date: string, changes: NonNullable<Rules['listChanges']> = []): ListIndex {
+    const live = changes.filter((ch) => (!ch.from || date >= ch.from) && (!ch.to || date <= ch.to));
+    if (!live.length) return this;
+    const key = live.map((ch) => `${ch.list}|${ch.from}|${ch.to}`).join(';');
+    let v = this.views.get(key);
+    if (!v) {
+      v = new ListIndex({});
+      for (const [k, s] of this.sets) v.sets.set(k, s);
+      for (const ch of live) {
+        const s = new Set(v.sets.get(ch.list) ?? []);
+        for (const r of ch.remove) s.delete(digitsOf(r));
+        for (const a of ch.add) s.add(digitsOf(a));
+        v.sets.set(ch.list, s);
+      }
+      this.views.set(key, v);
+    }
+    return v;
+  }
   has(list: string, hts: string): boolean {
     const s = this.sets.get(list);
     if (!s) return false;
@@ -803,7 +823,9 @@ function note51Canada(c: Ctx, blocked232: boolean): Line[] {
   if (covered && idx.has('n51:16_aircraft', input.hts) && ask(c, { ...aircraftQ, defaultValue: civilDefault(c) }).value) return z('9903.03.16', 'Civil-aircraft articles are exempt.');
   for (const m of n.measures) {
     if (!idx.has(m.list, input.hts)) continue;
-    if (m.blockedBy232 && blocked232) return z('9903.03.15', 'Goods subject to Section 232 are exempt.');
+    // 9903.03.15 blocked all three headings for entries before 2026-09-15, only .13 since (PP 11064/11065 Annex II A.2)
+    const blocks = m.blockedBy232 || (!!n.allBlockedBy232Before && input.entryDate < n.allBlockedBy232Before);
+    if (blocks && blocked232) return z('9903.03.15', 'Goods subject to Section 232 are exempt.');
     return [{ family: 's338', heading: m.heading, label: 'Section 338 Canada', rate: `+${fmtPct(n.pct)}`, amount: cents((input.value * n.pct) / 100),
       why: 'Section 338 duty on listed Canadian goods. A USMCA claim does not remove it.', cite: 'HTS ch.99 note 51; CSMS #69606660, #69851916' }];
   }
@@ -1053,7 +1075,21 @@ export function calculate(input: Input, line: HtsLine | undefined, rules: Rules,
     notes: [`${claim.provision}: duties figured on $${dutiable.toLocaleString('en-US')} of the $${input.value.toLocaleString('en-US')} value.`, ...part.notes] };
 }
 
-function calculateCore(input: Input, line: HtsLine | undefined, rules: Rules, idx: ListIndex): Result {
+/** An import ban that covers this entry, as the error to show (null if none): asks whether the goods are in scope. */
+function bannedBy(c: Ctx): string | null {
+  const { input } = c;
+  const b = (c.rules.bans ?? []).find((x) => x.origin.includes(input.origin) && input.entryDate >= x.from
+    && x.codes.some((code) => c.line.digits.startsWith(digitsOf(code)) || digitsOf(input.hts).startsWith(digitsOf(code))));
+  if (!b) return null;
+  if (b.question && !ask(c, { id: 'banPackaged', kind: 'yesno', defaultValue: true, text: b.question,
+    why: 'Only packaged products are banned; bulk goods pay the +50% duty instead.' }).value) return null;
+  if (ask(c, { id: 'arrivedBeforeBan', kind: 'yesno', defaultValue: false, text: `Did the goods arrive in the US before ${b.from}?`,
+    why: 'Goods imported before the ban can still be entered; they pay the +50% duty.' }).value) return null;
+  return `Can't be imported: ${b.label} from ${b.from} (${b.source}). Goods that arrived before ${b.from} can still be entered at +50%: answer the question.`;
+}
+
+function calculateCore(input: Input, line: HtsLine | undefined, rules: Rules, idxAll: ListIndex): Result {
+  const idx = idxAll.at(input.entryDate, rules.listChanges);
   const empty: Result = { ok: false, lines: [], fees: [], duty: 0, feesTotal: 0, total: 0, effectivePct: 0, questions: [], notes: [], adcvd: [], entryType: '11', defaults: [],
     revision: rules.meta.revision };
   if (!line) return { ...empty, error: `HTS ${input.hts} was not found in ${rules.meta.revision}.` };
@@ -1080,6 +1116,8 @@ function calculateCore(input: Input, line: HtsLine | undefined, rules: Rules, id
 
   const c: Ctx = { input, line, rules, idx, a: input.answers ?? {}, questions: [], notes: [],
     base: { amount: 0, avePct: 0, rateText: '', program: null } };
+  const ban = bannedBy(c);
+  if (ban) return { ...empty, line, error: ban, questions: c.questions };
   const baseLine = computeBase(c);
   const s232 = section232(c);
   const lines = [

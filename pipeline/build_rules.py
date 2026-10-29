@@ -49,6 +49,9 @@ def ranges_in(text):
     return [(int(a), int(b)) for a, b in re.findall(r"L(\d{6})\s*[-–]\s*L?(\d{6})", text or "")]
 
 
+BAN_LABEL = {"Proclamation 11061": "Canadian alcoholic beverages", "Proclamation 11062": "Canadian dairy and sugar products",
+             "Proclamation 11063": "Canadian motorcycles"}
+
 EU27 = ["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV",
         "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"]
 
@@ -160,6 +163,7 @@ def build():
     n232 = json.loads((REF / "narrow_232.json").read_text(encoding="utf-8"))
     for k in ("n16_k_parts", "n16_g_motorcycle_candidates"):
         lists[f"s232:{k}"] = sorted(set(n232["lists"][k]["codes"]))
+    can = json.loads((REF / "canada_note51_changes.json").read_text(encoding="utf-8"))
     shaded_f = ROOT / "data" / "build" / "shaded_headings.json"
     expired = json.loads(shaded_f.read_text(encoding="utf-8"))["shaded"] if shaded_f.exists() else []
 
@@ -194,7 +198,7 @@ def build():
                 "inTransit": {"loadedBefore": "2026-07-22", "enteredBefore": "2026-07-29", "modes": ["ocean"],
                               "heading": "9903.05.02"},
                 "exempt": [{"heading": "9903.05.03", "list": "n50:ii"}]},
-        "n51": {"origin": ["CA"], "from": "2026-08-22", "pct": 50,
+        "n51": {"origin": ["CA"], "from": "2026-08-22", "pct": 50, "allBlockedBy232Before": "2026-09-15",
                 "measures": [{"heading": "9903.03.12", "list": "n51:12", "blockedBy232": False},
                              {"heading": "9903.03.13", "list": "n51:13", "blockedBy232": True},
                              {"heading": "9903.03.14", "list": "n51:14", "blockedBy232": False}]},
@@ -210,6 +214,10 @@ def build():
         "nic": {"heading": nic["heading"], "origin": nic["origin"],
                 "schedule": [{"from": r["from"], "to": r["to"], "pct": r["rate"]["pct"]} for r in nic["rateSchedule"]]},
         "expired": expired,
+        # dated list changes and import bans researched from the proclamations (references/canada_note51_changes.json)
+        "listChanges": [{k: ch[k] for k in ("list", "from", "to", "add", "remove", "source")} for ch in can["changes"]],
+        "bans": [{"origin": ["CA"], "from": b["from"], "codes": b["codes"], "question": b["question"], "source": b["source"].split(" (")[0],
+                  "label": BAN_LABEL[b["source"].split(" (")[0]]} for b in can["bans"]],
         "cotton": cotton,
         "adcvd": adcvd,
         "programs": {k: {"name": v["name"], "countries": v.get("countries", []), "in_force": v.get("in_force", False)}

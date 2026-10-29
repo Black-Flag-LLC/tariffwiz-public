@@ -348,7 +348,7 @@ export default function App() {
             </div>
           )}
 
-          {result?.ok && result.questions.length > 0 && data && line && (
+          {result && result.questions.length > 0 && data && line && ( /* also when blocked (an import ban asks what decides it) */
             <div className="questions">
               <h2>Questions that change the number</h2>
               {result.questions.map((q) => <QuestionField key={q.id} q={q} form={form} set={set} stake={stakes[q.id] ?? null} />)}

@@ -36,15 +36,16 @@ describe('country measures (country_measures.md §5, $10,000, entered 2026-10-28
     expect(headings(r).some((h) => h.startsWith('9903.01'))).toBe(false);
     expect(r.total).toBe(3697.14);
   });
+  // packaged Canadian wine is banned from 2026-09-29 (PP 11061): these price wine that arrived before the ban
   it('2 CA wine with USMCA claim: 338 +50% only, MPF exempt, no HMF by truck', () => {
-    const r = run('2204.21.50.40', 'CA', 10000, { claim: 'S', mode: 'truck', quantity: 1000 });
+    const r = run('2204.21.50.40', 'CA', 10000, { claim: 'S', mode: 'truck', quantity: 1000 }, { arrivedBeforeBan: true });
     expect(r.duty).toBe(5000);
     expect(headings(r)).toContain('9903.05.93');
     // + federal excise tax: 1,000 L = 264.2 wine gallons x $1.07 (26 U.S.C. 5041(b)(1); excise.json)
     expect(r.total).toBe(5282.69);
   });
   it('2b CA wine without claim: 6.3¢/L + 338 + note 52', () => {
-    const r = run('2204.21.50.40', 'CA', 10000, { mode: 'truck', quantity: 1000 });
+    const r = run('2204.21.50.40', 'CA', 10000, { mode: 'truck', quantity: 1000 }, { arrivedBeforeBan: true });
     expect(r.duty).toBe(6063);
   });
   it('3 CA denim trousers, no claim', () => expect(run('6203.42.07.11', 'CA', 10000).duty).toBe(2660));
@@ -172,6 +173,32 @@ describe('fees and guards', () => {
     expect(findLine(ch04, '0402.10.05')?.code).toBe('0402.10.05.00');
     expect(findLine(ch04, '0402.10.10')?.code).toBe('0402.10.10.00');
     expect(findLine(ch04, '0402.99.99')).toBeUndefined();
+  });
+  it('Canada note 51 lists follow their dates (PP 11064/11065 from 9/15, PP 11076 from 10/30)', () => {
+    const ca = (hts: string, entryDate: string) => headings(run(hts, 'CA', 10000, { mode: 'truck', entryDate }));
+    expect(ca('4819.10.00.40', '2026-10-29')).toContain('9903.03.14');      // removed 10/30
+    expect(ca('4819.10.00.40', '2026-10-30')).not.toContain('9903.03.14');
+    expect(ca('1806.10.43.00', '2026-10-29')).not.toContain('9903.03.14');  // added 10/30
+    expect(ca('1806.10.43.00', '2026-10-30')).toContain('9903.03.14');
+    expect(ca('9401.41.00.00', '2026-09-14')).not.toContain('9903.03.14');  // added 9/15
+    expect(ca('9401.41.00.00', '2026-09-15')).toContain('9903.03.14');
+  });
+  it('before 9/15, 9903.03.15 exempted Section 232 goods from all three Canada headings; since, only .13', () => {
+    const ca = (entryDate: string) => headings(run('9403.20.00.82', 'CA', 10000, { mode: 'truck', entryDate }));
+    expect(ca('2026-09-01')).toContain('9903.03.15');
+    expect(ca('2026-10-20')).toContain('9903.03.14');
+  });
+  it('Canadian goods banned from 9/29 (PP 11061-11063) are refused unless they arrived earlier', () => {
+    const whey = (entryDate: string, answers = {}) => run('0404.10.05.00', 'CA', 10000, { mode: 'truck', entryDate }, answers);
+    expect(whey('2026-09-28').ok).toBe(true);
+    const banned = whey('2026-10-01');
+    expect(banned.ok).toBe(false);
+    expect(banned.error).toMatch(/Can't be imported/);
+    expect(banned.questions.map((q) => q.id)).toContain('arrivedBeforeBan');
+    expect(whey('2026-10-01', { arrivedBeforeBan: true }).ok).toBe(true);
+    // packaged-only alcohol: bulk is not banned
+    expect(run('2203.00.00.30', 'CA', 10000, { mode: 'truck', entryDate: '2026-10-01' }, { banPackaged: false }).ok).toBe(true);
+    expect(run('0404.10.05.00', 'US', 10000, { entryDate: '2026-10-01' }).ok).toBe(true);
   });
   it('rejects Chapter 98 and 99 numbers typed as the product (they are claims and add-ons, not goods)', () => {
     for (const code of ['9903.88.01', '9817.00.60.00', '9801.00.10.12']) {

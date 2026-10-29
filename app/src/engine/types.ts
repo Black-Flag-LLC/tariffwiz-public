@@ -49,7 +49,7 @@ export interface Rules {
   };
   n50: { heading: string; pct: number; origin: string[]; from: string; inTransit: InTransit;
     exempt: { heading: string; list: string }[] };
-  n51: { origin: string[]; from: string; pct: number;
+  n51: { origin: string[]; from: string; pct: number; allBlockedBy232Before?: string;
     measures: { heading: string; list: string; blockedBy232: boolean }[] };
   n30: { origin: string[]; measures: { heading: string; pct: number; list: string }[] };
   n41: { list: string; exempt: string[]; years: { from: string; in: number; over: number }[]; to: string };
@@ -59,6 +59,10 @@ export interface Rules {
     autoYes: string[]; autoNo: string[] }[];
   nic: { heading: string; origin: string[]; schedule: { from: string; to: string | null; pct: number }[] };
   expired: string[];
+  /** dated changes to `lists`: inside [from, to] a list is the Rev list minus `remove` (exact codes) plus `add` */
+  listChanges?: { list: string; from: string | null; to: string | null; add: string[]; remove: string[]; source: string }[];
+  /** goods excluded from importation (no duty can be paid), by origin and import date */
+  bans?: { origin: string[]; from: string; codes: string[]; label: string; question: string | null; source: string }[];
   cotton: Record<string, number>;   // HTS10 digits -> Cotton Board assessment, cents per kg
   adcvd: { case: string; type: 'AD' | 'CVD'; country: string; product: string; hts: string[]; fr: string | null }[];
   programs: Record<string, { name: string; countries: string[]; in_force: boolean }>;
@@ -92,6 +96,8 @@ export interface Answers {
   droneThermal?: boolean;    // drone with thermal imaging
   s301Exclusion?: boolean;   // the product matches the Section 301 exclusion's description
   stsCrane?: boolean;        // ship-to-shore gantry crane
+  banPackaged?: boolean;     // banned alcohol: packaged for direct consumption (only then is it banned)
+  arrivedBeforeBan?: boolean; // goods imported before an import ban started (they can still be entered)
   chassis?: boolean;         // intermodal chassis
   kitchenCabinet?: boolean;  // wooden kitchen cabinet or bathroom vanity (or part)
   quartzInQuota?: boolean;   // quartz surface products entered within the safeguard quota
