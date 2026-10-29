@@ -352,4 +352,9 @@ chk.delete('');
 md.push('## RP 69 check (entries that reported a ch.99 rate: rate paid on dutiable value vs engine)', '', '| result | pairs | value share |', '|---|---|---|',
   ...[...chk].map(([k, rs]) => `| ${k} | ${rs.length} | ${((val(rs) / totVal) * 100).toFixed(1)}% |`), '');
 writeFileSync(path.join(OUT, `census_${MONTH}_groups.md`), md.join('\n') + '\n');
+// machine-readable totals for the update and monthly jobs (pipeline/census_gate.py)
+writeFileSync(path.join(OUT, `census_${MONTH}_summary.json`), JSON.stringify({ month: MONTH, revision: rules.meta.revision,
+  pairs: rows.length, valueB: Number((totVal / 1e9).toFixed(2)),
+  share: Object.fromEntries([...counts].map(([k, rs]) => [k, Number(((val(rs) / totVal) * 100).toFixed(2))])),
+  count: Object.fromEntries([...counts].map(([k, rs]) => [k, rs.length])) }, null, 1) + '\n');
 console.log(md.slice(0, 12 + by((r) => String(r.country)).size + 4).join('\n'));

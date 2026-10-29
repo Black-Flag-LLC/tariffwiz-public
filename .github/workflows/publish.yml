@@ -1,0 +1,39 @@
+name: publish
+# After every push to main (including a merged tariff-update pull request): mirror the shippable files into the public
+# copy (publish_public.sh) and, once that copy is public, redeploy the site.
+# Needs the secret PUBLIC_REPO_TOKEN: a fine-grained token with Contents read/write and Actions read/write on
+# Zacsluss/tariffwiz-public. Without it the job only prints a notice (sync by hand with publish_public.sh).
+on:
+  push:
+    branches: [main]
+    paths: ['app/**', 'pipeline/**', '.github/**', 'publish_public.sh']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency: { group: publish, cancel-in-progress: false }
+jobs:
+  publish:
+    if: github.repository == 'Zacsluss/tariffwiz'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+    steps:
+      - if: env.GH_TOKEN == ''
+        run: echo "::notice::PUBLIC_REPO_TOKEN is not set; the public copy was not synced. Run publish_public.sh by hand."
+      - if: env.GH_TOKEN != ''
+        uses: actions/checkout@v4
+      - if: env.GH_TOKEN != ''
+        name: Sync the public copy
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+          bash publish_public.sh "Sync: $(git log -1 --format=%s)"
+      - if: env.GH_TOKEN != ''
+        name: Redeploy the site (only once the copy is public)
+        run: |
+          if [ "$(gh repo view Zacsluss/tariffwiz-public --json visibility -q .visibility)" = PUBLIC ]; then
+            gh workflow run ci.yml -R Zacsluss/tariffwiz-public -f deploy=true
+          else
+            echo "Public copy is still private (pre-launch): synced, not deployed."
+          fi

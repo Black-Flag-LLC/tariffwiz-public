@@ -4,6 +4,8 @@
 - Every 2025-2026 revision's Chapter 99 + Change Record PDFs
                                             -> data/raw/usitc/revisions/<release>/
 Re-runnable: skips files already on disk.
+  python -I pipeline/fetch_hts.py                     # all of the above
+  python -I pipeline/fetch_hts.py --release NAME      # current JSON + only that release's PDFs (update job)
 """
 import json
 import sys
@@ -44,12 +46,12 @@ def fetch_current():
     print(f"current total rows: {total}")
 
 
-def fetch_revisions(years=("2025", "2026")):
+def fetch_revisions(years=("2025", "2026"), only=None):
     releases = json.loads(get(f"{API}/releaseList"))
     (ROOT / "releases.json").write_text(json.dumps(releases, indent=1))
     for rel in releases:
         name = rel["name"]
-        if not name.startswith(years):
+        if (name != only) if only else not name.startswith(years):  # --release ignores the years (2027HTSBasic…)
             continue
         d = ROOT / "revisions" / name
         d.mkdir(parents=True, exist_ok=True)
@@ -64,5 +66,6 @@ def fetch_revisions(years=("2025", "2026")):
 
 
 if __name__ == "__main__":
+    release = sys.argv[sys.argv.index("--release") + 1] if "--release" in sys.argv else None
     fetch_current()
-    fetch_revisions()
+    fetch_revisions(only=release)

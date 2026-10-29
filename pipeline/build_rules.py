@@ -16,6 +16,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # python -I leaves the script folder off sys.path
+from search_index import write_search  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 REF = ROOT / ".claude" / "skills" / "us-import-duty" / "references"
 TXT = ROOT / "data" / "build" / "hts_rev21.txt"
@@ -219,23 +222,8 @@ def build():
     hts.mkdir(exist_ok=True)
     for f in (ROOT / "data" / "build" / "shards").glob("ch*.json"):
         shutil.copy(f, hts / f.name)
-    # search index: every rate-bearing leaf line (10-digit, or 8-digit without stat suffixes)
-    leaves = []
-    for f in sorted((ROOT / "data" / "build" / "shards").glob("ch*.json")):
-        ls = json.loads(f.read_text(encoding="utf-8"))
-        if f.stem in ("ch98", "ch99"):
-            continue
-        has_kids = {l["digits"][:8] for l in ls if len(l["digits"]) == 10}
-        for l in ls:
-            if len(l["digits"]) == 10 or (len(l["digits"]) == 8 and l["digits"] not in has_kids):
-                path = l["path"].split(" > ")
-                segs = [p for p in path if p]
-                full = " > ".join(segs)
-                # keep the heading (names the product) and the nearest levels; drop the middle if long
-                short = full if len(full) <= 260 else " > ".join([segs[0][:110], "…"] + segs[-2:])[:320]
-                leaves.append([l["code"], l["desc"], short, (l["general"] or {}).get("raw", "")[:40]])
-    (OUT / "search.json").write_text(json.dumps(leaves, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    print("search leaves:", len(leaves), round((OUT / "search.json").stat().st_size / 1024), "KB")
+    n_leaves = write_search(ROOT / "data" / "build" / "shards", OUT / "search.json")
+    print("search leaves:", n_leaves, round((OUT / "search.json").stat().st_size / 1024), "KB")
     # PGA flags (display only, loaded lazily by the app): references/pga_flags.json -> data/pga.json
     pga_f = REF / "pga_flags.json"
     if pga_f.exists():

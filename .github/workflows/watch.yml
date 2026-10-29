@@ -1,22 +1,47 @@
 name: tariff-watch
+# Daily: new HTS revision, Federal Register notices and CBP CSMS messages -> one "Tariff watch" issue (new items only).
+# A new HTS revision also starts the update job: rebuild the data, run tests + heading audit + Census check, open a
+# pull request. Nothing goes live until that pull request is reviewed and merged.
 on:
   schedule: [{ cron: '17 12 * * *' }]   # daily, 12:17 UTC
   workflow_dispatch:
+    inputs:
+      release:
+        description: Run the update job for this HTS revision now (e.g. 2026HTSRev22); empty = only if the watch finds one
+        type: string
+        default: ''
+      dry_run:
+        description: With a release, run every step and show the pull request text, but push nothing
+        type: boolean
+        default: false
 permissions:
   contents: read
-  issues: write
+concurrency: { group: tariff-watch, cancel-in-progress: false }
 jobs:
   watch:
+    if: github.repository == 'Zacsluss/tariffwiz'   # the public copy gets this file too; only the source repo watches
     runs-on: ubuntu-latest
+    permissions: { contents: read, issues: write }
+    outputs:
+      new_revision: ${{ steps.w.outputs.new_revision }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
+      - name: Collect what earlier watch issues already reported
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          touch seen.txt
+          for n in $(gh issue list --state all --search '"Tariff watch" in:title' --limit 10 --json number -q '.[].number'); do
+            gh issue view "$n" --json body,comments -q '.body, .comments[].body' >> seen.txt
+          done
       - id: w
         run: |
           set +e
-          python -I pipeline/watch.py > report.md; echo "code=$?" >> "$GITHUB_OUTPUT"
+          python -I pipeline/watch.py --seen seen.txt --json watch.json > report.md; code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
           cat report.md
+          if [ -f watch.json ]; then echo "new_revision=$(jq -r '.new_revision // ""' watch.json)" >> "$GITHUB_OUTPUT"; fi
       - if: steps.w.outputs.code == '2'
         run: exit 1   # the check itself failed (network/API), don't open an empty issue
       - if: steps.w.outputs.code == '1'
@@ -25,3 +50,89 @@ jobs:
           title="Tariff watch: changes to review"
           n=$(gh issue list --state open --search "$title in:title" --json number -q '.[0].number')
           if [ -n "$n" ]; then gh issue comment "$n" --body-file report.md; else gh issue create --title "$title" --body-file report.md; fi
+
+  update:
+    needs: watch
+    if: needs.watch.outputs.new_revision != '' || inputs.release != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions: { contents: write, pull-requests: write, issues: write }
+    env:
+      REL: ${{ inputs.release || needs.watch.outputs.new_revision }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: seen
+        name: Skip a revision that already has an update branch (unless run by hand)
+        run: |
+          if [ -z "${{ inputs.release }}" ] && git ls-remote --exit-code --heads origin "tariff-update/$REL" >/dev/null; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"; echo "tariff-update/$REL already exists; nothing to do."
+          fi
+      - if: steps.seen.outputs.skip != 'true'
+        uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - if: steps.seen.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - id: build
+        if: steps.seen.outputs.skip != 'true'
+        name: Fetch and rebuild the HTS data
+        run: |
+          command -v pdftotext >/dev/null || { sudo apt-get update -q && sudo apt-get install -yq poppler-utils; }
+          pip install -q 'pymupdf>=1.24'
+          python -I pipeline/fetch_hts.py --release "$REL"
+          python -I pipeline/build_hts.py
+          d="data/raw/usitc/revisions/$REL"
+          pdftotext -layout -enc UTF-8 "$d/Change_Record.pdf" data/build/change_record.txt || rm -f data/build/change_record.txt
+          python -I pipeline/shaded_headings.py --pdf "$d/Chapter_99.pdf" --out data/build/shaded_new.json
+          python -I pipeline/update_hts.py --release "$REL" --shaded data/build/shaded_new.json \
+            --change-record data/build/change_record.txt --apply
+          echo "changed=$(jq -r .changed data/build/update_status.json)" >> "$GITHUB_OUTPUT"
+          echo "rules=$(jq -r .needs_rule_work data/build/update_status.json)" >> "$GITHUB_OUTPUT"
+      - id: checks
+        if: steps.build.outputs.changed == 'true' || (inputs.dry_run && steps.build.outputs.changed != '')
+        name: Tests, heading audit and Census check on the new data
+        working-directory: app
+        env: { NO_COLOR: '1', FORCE_COLOR: '0' }   # plain text, so the counts can be read from the logs
+        run: |
+          set +e
+          npm ci --no-audit --no-fund
+          ok=true
+          npx vitest run > ../data/build/vitest.txt 2>&1 || ok=false
+          npm run audit:headings > ../data/build/audit.txt 2>&1 || ok=false
+          m=$(python -I ../pipeline/census_gate.py latest)
+          {
+            echo "### Checks on the new data"; echo
+            echo "- Golden tests: $(grep -E 'Tests +[0-9]' ../data/build/vitest.txt | tr -s ' ' || echo 'did not run')"
+            echo "- Heading audit: $(grep -E 'violation shapes' ../data/build/audit.txt | tail -1 || echo 'did not finish')"; echo
+          } > ../data/build/checks.md
+          if [ -n "$m" ] && npx tsx scripts/validate_census.ts --month "$m" > ../data/build/census.txt 2>&1; then
+            python -I ../pipeline/census_gate.py check "../data/validation/census_20${m:0:2}-${m:2:2}_summary.json" >> ../data/build/checks.md || ok=false
+          else
+            echo "Census check did not run (month '${m}'): see the workflow log." >> ../data/build/checks.md; ok=false
+          fi
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+          cat ../data/build/checks.md
+          if [ "$ok" != true ]; then { echo; echo "Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"; } >> ../data/build/checks.md; fi
+      - if: steps.build.outputs.changed == 'true' || (inputs.dry_run && steps.build.outputs.changed != '')
+        name: Open the pull request
+        run: |
+          draft=""; title="HTS $REL: automatic data update"
+          if [ "${{ steps.build.outputs.rules }}" = true ]; then draft="--draft"; title="$title (rule work needed)"; fi
+          if [ "${{ steps.checks.outputs.ok }}" != true ]; then draft="--draft"; title="$title (checks failed)"; fi
+          { cat data/build/update_report.md; echo; cat data/build/checks.md; echo
+            echo "---"; echo "Opened by the tariff-watch workflow. Merging puts this data live (publish workflow)."; } > pr.md
+          if [ "${{ inputs.dry_run }}" = true ]; then { echo "# Dry run: $title"; cat pr.md; } >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "tariff-update/$REL"
+          git add app/public/data
+          git commit -qm "HTS $REL: automatic data update" -m "$(jq -r '.reasons | join("; ")' data/build/update_status.json)"
+          git push -q --force origin "tariff-update/$REL"
+          if ! gh pr create $draft --base main --head "tariff-update/$REL" --title "$title" --body-file pr.md; then
+            # Settings > Actions > General > "Allow GitHub Actions to create and approve pull requests" is off
+            echo "Branch pushed but no pull request could be opened. Open it here: ${{ github.server_url }}/${{ github.repository }}/compare/main...tariff-update/$REL" > note.md
+            echo >> note.md; cat pr.md >> note.md
+            gh issue create --title "$title: open the pull request" --body-file note.md
+          fi
+      - if: steps.build.outputs.changed == 'false' && !inputs.dry_run
+        run: echo "The rebuilt data equals what is in main; no pull request needed."

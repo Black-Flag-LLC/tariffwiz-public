@@ -1,0 +1,52 @@
+name: census-check
+# Monthly: run the engine against the duties CBP actually collected in the newest Census month (about 5 weeks after
+# the month ends) and open an issue when it is worse than the limits in pipeline/census_gate.py.
+on:
+  schedule: [{ cron: '23 13 12 * *' }]   # 12th of each month, 13:23 UTC
+  workflow_dispatch:
+    inputs:
+      month:
+        description: Census month as YYMM (e.g. 2609); empty = newest released
+        type: string
+        default: ''
+permissions:
+  contents: read
+jobs:
+  census:
+    if: github.repository == 'Zacsluss/tariffwiz'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions: { contents: read, issues: write }
+    defaults: { run: { working-directory: app } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - run: npm ci --no-audit --no-fund
+      - id: c
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          m="${{ inputs.month }}"; [ -n "$m" ] || m=$(python -I ../pipeline/census_gate.py latest)
+          if [ -z "$m" ]; then echo "No Census month inside the engine's date window is released yet." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          npx tsx scripts/validate_census.ts --month "$m"
+          f="../data/validation/census_20${m:0:2}-${m:2:2}"
+          set +e
+          python -I ../pipeline/census_gate.py check "${f}_summary.json" > verdict.md; code=$?
+          set -e
+          cat verdict.md >> "$GITHUB_STEP_SUMMARY"
+          if [ $code -ne 0 ]; then
+            { cat verdict.md; echo; echo "Group tables: download the census artifact from ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              echo; echo "Next step: compare the mismatch groups with data/validation/census_2026-08_report.md and fix the rule that moved."; } > issue.md
+            gh issue create --title "Census check 20${m:0:2}-${m:2:2}: engine drifted from collected duties" --body-file issue.md
+          fi
+          echo "file=$f" >> "$GITHUB_OUTPUT"
+      - if: steps.c.outputs.file != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: census
+          path: |
+            data/validation/census_*_groups.md
+            data/validation/census_*_summary.json
+            data/validation/census_*.csv
