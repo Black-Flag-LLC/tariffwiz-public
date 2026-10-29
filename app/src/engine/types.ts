@@ -106,6 +106,9 @@ export interface Answers {
   droneThermal?: boolean;    // drone with thermal imaging
   mailGift?: boolean;        // mail: bona fide gift within the $100 ($200 from VI/GU/AS) daily limit
   inboundEms?: boolean;      // mail: an Inbound EMS item (the only formally entered mail that pays MPF)
+  donation?: boolean;        // donated by a US person to relieve human suffering (9903.05.08 / 9903.05.91)
+  pharmaCompany?: string;    // patented pharma company status: 'none' | 'listed' (.61) | 'onshoring' (.64) | 'onshoring_mfn' (.65) | 'specialty' (.66)
+  s301Derived?: string;      // note 20(z)-(gg): the 301 heading of the subheading this line's rate is derived from, or 'none'
   qizMade?: boolean;         // made in a designated Qualifying Industrial Zone (program N, Jordan/Egypt)
   droneOver25kg?: boolean;   // a part is for a drone with maximum take-off weight over 25 kg (note 43(c)(2))
   droneExceptUse?: boolean;  // that large drone is for retail delivery, agriculture or sale to the Department of War

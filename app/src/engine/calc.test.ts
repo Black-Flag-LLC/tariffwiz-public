@@ -239,6 +239,27 @@ describe('fees and guards', () => {
     expect(m(2000, '2027-02-01', { inboundEms: true }).fees.find((f) => f.heading === 'MPF')?.amount).toBe(34.58); // FY2027 minimum
     expect(m(80, '2026-11-01', { mailGift: true }).total).toBe(0);
   });
+  it('donations file 9903.05.91 (note 52) and 9903.05.08 (note 50) instead of the country duty', () => {
+    expect(headings(run('6109.10.00.12', 'VN', 10000, {}, { donation: true }))).toContain('9903.05.91');
+    expect(run('6109.10.00.12', 'VN', 10000, {}, { donation: true }).duty).toBe(1650);
+    expect(headings(run('6109.10.00.12', 'BR', 10000, {}, { donation: true }))).toEqual(expect.arrayContaining(['9903.05.08', '9903.05.91']));
+  });
+  it('patented pharma company headings 9903.04.61/.64/.65/.66 and US-API dosage form 9903.04.68 (note 40(e), (h))', () => {
+    const p = (o: string, answers: object, entryDate = '2026-10-28') => run('2918.99.30.00', o, 10000, { entryDate }, answers as Answers);
+    expect(charged(p('IN', { pharmaType: 'patented', pharmaCompany: 'onshoring' }))).toContain('9903.04.64=2000');
+    expect(headings(p('IN', { pharmaType: 'patented', pharmaCompany: 'specialty' }))).toContain('9903.04.66');
+    expect(p('IN', { pharmaType: 'patented', pharmaCompany: 'specialty' }).duty).toBe(650);       // .66 also lifts note 52 (52(f))
+    expect(headings(p('IN', { pharmaType: 'patented', pharmaCompany: 'listed' }, '2026-09-20'))).toContain('9903.04.61');
+    expect(headings(p('IN', { pharmaType: 'patented', pharmaCompany: 'listed' }, '2026-10-01'))).toContain('9903.04.60'); // expired 9/29
+    expect(headings(p('DE', { pharmaType: 'patented', pharmaCompany: 'onshoring' }))).toContain('9903.04.62');  // 15% deal is lower
+    expect(headings(p('IN', { pharmaType: 'us_api' }))).toContain('9903.04.68');
+  });
+  it('note 20(z)-(gg): a derived rate files 9903.88.21-.28 instead of its own List 3 / 4A duty', () => {
+    expect(headings(run('6103.22.00.10', 'CN', 10000))).toContain('9903.88.15');
+    const d = run('6103.22.00.10', 'CN', 10000, {}, { s301Derived: '9903.88.03' } as Answers);
+    expect(headings(d)).toContain('9903.88.27');
+    expect(headings(d)).not.toContain('9903.88.15');
+  });
   it('rejects Chapter 98 and 99 numbers typed as the product (they are claims and add-ons, not goods)', () => {
     for (const code of ['9903.88.01', '9817.00.60.00', '9801.00.10.12']) {
       const r = run(code, 'CN', 1000);

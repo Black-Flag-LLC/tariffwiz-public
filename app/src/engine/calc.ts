@@ -389,7 +389,8 @@ function section232(c: Ctx): S232 {
   if (idx.has('s232:n40_c_pharma', h)) {
     const q = ask(c, { id: 'pharmaType', kind: 'choice', defaultValue: 'generic', // most imports under these codes are generics; the stake shows the patented cost
       options: [{ value: 'patented', label: 'Patented drug or its ingredient' }, { value: 'generic', label: 'Generic' },
-        { value: 'clinical', label: 'Only for clinical trials' }, { value: 'other_pharma', label: 'Drug, neither patented nor generic' },
+        { value: 'clinical', label: 'Only for clinical trials' }, { value: 'us_api', label: 'Dosage form made from a US active ingredient' },
+        { value: 'other_pharma', label: 'Drug, neither patented nor generic' },
         { value: 'not_pharma', label: 'Not a pharmaceutical' }],
       text: 'Is this a patented pharmaceutical, a generic, or not a pharmaceutical?',
       why: 'Patented drugs pay up to 100% under Section 232; generics pay nothing extra.' });
@@ -398,10 +399,31 @@ function section232(c: Ctx): S232 {
     // every code on the 40(c) list files exactly one of 9903.04.60–.70, even when nothing is added (40(a), L231959–231964)
     const free: Record<string, [string, string]> = { generic: ['9903.04.67', 'Generic pharmaceutical: no additional duty.'],
       clinical: ['9903.04.70', 'Solely for use in clinical trials: no additional duty.'],
+      us_api: ['9903.04.68', 'Dosage form whose active ingredient is a product of the US: no additional duty.'],
       other_pharma: ['9903.04.69', 'Neither patented nor generic (40(i)): no additional duty.'],
       not_pharma: ['9903.04.69', 'Not a pharmaceutical article (40(i)): no additional duty.'] };
     if (free[String(q.value)]) lines.push(add232(free[String(q.value)][0], 'Section 232 pharmaceuticals (not covered)', 0, input.value, free[String(q.value)][1], cite));
     if (q.value === 'patented') {
+      // 40(e), 40(h): company-specific headings (the Secretary notifies CBP of the companies); mutually exclusive with the
+      // country headings (40(a)), so the importer files whichever it qualifies for at the lowest duty
+      const co = ask(c, { id: 'pharmaCompany', kind: 'choice', defaultValue: 'none',
+        options: [{ value: 'none', label: 'None of these' },
+          ...(input.entryDate < '2026-09-29' ? [{ value: 'listed', label: 'Company identified by the Secretary (before 29 Sep 2026)' }] : []),
+          { value: 'onshoring', label: 'Company with an approved onshoring plan' },
+          { value: 'onshoring_mfn', label: 'Onshoring plan and an MFN pricing agreement' },
+          { value: 'specialty', label: 'Orphan, nuclear, plasma, fertility, cell/gene, ADC, countermeasure or listed specialty drug' }],
+        text: 'Does a company-specific status apply to this patented drug?',
+        why: 'Commerce-listed companies and these drug types file their own headings at 0% to +20% instead of up to 100%.' });
+      const coHead: Record<string, [string, number, string]> = {
+        listed: ['9903.04.61', 0, 'Secretary-identified company, entered before 29 Sep 2026 (40(e)).'],
+        onshoring: ['9903.04.64', 20, 'Approved onshoring plan: +20% (40(h)(i)).'],
+        onshoring_mfn: ['9903.04.65', 0, 'Onshoring plan and an MFN pricing agreement: no additional duty (40(h)(ii)).'],
+        specialty: ['9903.04.66', 0, 'Specialty drug type listed in 40(h)(iii): no additional duty.'] };
+      const pick = coHead[String(co.value)];
+      const countryPct = o === 'GB' ? 0 : eu || ['JP', 'KR', 'CH', 'LI'].includes(o) ? Math.max(0, 15 - c.base.avePct) : Math.max(0, 100 - c.base.avePct);
+      if (pick && (co.value !== 'listed' || input.entryDate < '2026-09-29') && pick[1] <= countryPct)
+        return { blocksCountry: true, lines: [...lines, add232(pick[0], 'Section 232 pharmaceuticals (company status)', pick[1], input.value, pick[2], cite,
+          { interpretation: 'Company status is set by Commerce/HHS notices to CBP; keep the evidence with the entry.' })] };
       if (o === 'GB') return { blocksCountry: true, lines: [...lines, add232('9903.04.63', 'Section 232 pharmaceuticals (UK)', 0, input.value,
         'UK patented pharmaceuticals: no additional duty.', cite, assumed)] };
       if (eu || ['JP', 'KR', 'CH', 'LI'].includes(o))
@@ -709,6 +731,13 @@ function inTransit(c: Ctx, t: { loadedBefore: string; enteredBefore: string; mod
   return !!ld && ld < t.loadedBefore && c.input.entryDate < t.enteredBefore && t.modes.includes(c.input.mode);
 }
 
+// note 20(z)-(cc) (List 3 lines) and 20(dd)-(gg) (List 4A lines) whose rate can be derived from another subheading
+const DERIVED_A = ['2202.99.36', '2202.99.37', '5810.91.00', '5810.92.10', '5810.92.90', '5810.99.10', '5810.99.90', '8205.90.60',
+  '8206.00.00', '8215.20.00', '9017.90.01', '9620.00.15', '9620.00.30'];
+const DERIVED_B = ['2106.90.52', '2106.90.54', '6103.22.00', '6103.23.00', '6103.29.05', '6103.29.10', '6103.29.20', '6104.22.00',
+  '6104.23.00', '6104.29.05', '6104.29.10', '6203.22.30', '6203.29.10', '6203.29.15', '6203.29.20', '6203.29.30', '6204.21.00',
+  '6204.22.30', '6204.23.00', '6204.29.20', '8215.10.00', '9005.90.40', '9005.90.80', '9110.11.00', '9110.90.20', '9608.50.00'];
+
 function section301China(c: Ctx): Line[] {
   const { input, rules, idx } = c;
   if (!rules.s301.origin.includes(input.origin)) return [];
@@ -754,6 +783,26 @@ function section301China(c: Ctx): Line[] {
       why: `Covered by a product exclusion until ${exHit.e.to}.`, cite: `HTS ch.99 note 20(${exHit.e.subdivision})${exHit.it.line ? `; L${exHit.it.line}` : ''}` });
     n20 = [];
   }
+  // 20(z)-(gg): a line whose applied rate is derived from another subheading already under 301 files a carve-out instead
+  // of its own List 3 (.03/.09) or List 4A (.15) duty; the duty follows that subheading (price it under that code)
+  const derivedGroup = DERIVED_A.some((x) => digitsOf(input.hts).startsWith(digitsOf(x))) ? 'A'
+    : DERIVED_B.some((x) => digitsOf(input.hts).startsWith(digitsOf(x))) ? 'B' : null;
+  const own = n20.filter((m) => (derivedGroup === 'A' ? ['9903.88.03', '9903.88.09'] : derivedGroup === 'B' ? ['9903.88.15'] : []).includes(m.heading));
+  if (own.length) {
+    const src = ask(c, { id: 's301Derived', kind: 'choice', defaultValue: 'none',
+      options: [{ value: 'none', label: 'No, its own rate' }, { value: '9903.88.01', label: 'Yes: from a List 1 subheading' },
+        { value: '9903.88.02', label: 'Yes: from a List 2 subheading' }, { value: '9903.88.03', label: 'Yes: from a List 3 subheading' },
+        { value: '9903.88.15', label: 'Yes: from a List 4A subheading' }],
+      text: 'Is this entry\'s rate taken from another subheading (a set, ensemble or part priced as its article)? If so, which Section 301 list is that subheading on?',
+      why: 'Then this line files a carve-out instead of its own Section 301 duty; the duty follows the subheading the rate comes from (note 20(z)–(gg)).' });
+    const k = ['9903.88.01', '9903.88.02', '9903.88.03', '9903.88.15'].indexOf(String(src.value));
+    if (k >= 0) {
+      n20 = n20.filter((m) => !own.includes(m));
+      const sub = (derivedGroup === 'A' ? ['z', 'aa', 'bb', 'cc'] : ['dd', 'ee', 'ff', 'gg'])[k];
+      zero(`9903.88.${(derivedGroup === 'A' ? 21 : 25) + k}`, `Rate derived from a subheading under ${src.value}: this line's own Section 301 duty does not apply. Price the source subheading for its duty.`,
+        `HTS ch.99 note 20(${sub}); L219660–L219719`);
+    }
+  }
   const names: Record<string, string> = { '9903.88.01': 'List 1', '9903.88.02': 'List 2', '9903.88.03': 'List 3', '9903.88.04': 'List 3',
     '9903.88.15': 'List 4A' };
   for (const m of [...n20, ...n31]) {
@@ -765,6 +814,12 @@ function section301China(c: Ctx): Line[] {
   }
   return out;
 }
+
+/** Donations by US persons to relieve human suffering (food, clothing and medicine are examples, not limits): file the
+ *  donation heading instead of the country duty. Asked only where the duty would otherwise be charged. */
+const donationQ = { id: 'donation' as const, kind: 'yesno' as const, defaultValue: false,
+  text: 'Is this donated by a US person (e.g. food, clothing, medicine) to relieve human suffering?',
+  why: 'Humanitarian donations are exempt from this country tariff (they file their own heading).' };
 
 function note50Brazil(c: Ctx, blocked232: boolean): Line[] {
   const { input, rules, idx } = c;
@@ -779,6 +834,7 @@ function note50Brazil(c: Ctx, blocked232: boolean): Line[] {
   if (infoMaterial(c)) return z('9903.05.09', 'Informational materials are exempt.');
   if (idx.has('n50:iv_aircraft', input.hts) && ask(c, { ...aircraftQ, defaultValue: civilDefault(c) }).value) return z('9903.05.05', 'Civil-aircraft use claimed.');
   if (idx.has('n50:v_pharma', input.hts) && ask(c, { ...pharmaAppQ, defaultValue: c.base.program === 'K' }).value) return z('9903.05.06', 'For pharmaceutical applications.');
+  if (ask(c, donationQ).value) return z('9903.05.08', 'Humanitarian donation: exempt.');
   return [{ family: 's301_brazil', heading: n.heading, label: 'Section 301 Brazil', rate: `+${fmtPct(n.pct)}`, amount: cents((input.value * n.pct) / 100),
     why: 'Section 301 action on Brazil (from 22 Jul 2026).', cite: 'HTS ch.99 note 50; FR Doc 2026-14542' }];
 }
@@ -844,6 +900,7 @@ function note52(c: Ctx, blocked232: boolean): Line[] {
   if (infoMaterial(c)) return z('9903.05.92', 'Informational materials are exempt.');
   if (idx.has('n52:d_aircraft', input.hts) && ask(c, { ...aircraftQ, defaultValue: civilDefault(c) }).value) return z('9903.05.88', 'Civil-aircraft use claimed.');
   if (idx.has('n52:e_pharma', input.hts) && ask(c, { ...pharmaAppQ, defaultValue: c.base.program === 'K' }).value) return z('9903.05.89', 'For pharmaceutical applications.');
+  if (ask(c, donationQ).value) return z('9903.05.91', 'Humanitarian donation: exempt.');
   const cite = 'HTS ch.99 note 52; USTR action 2026-07-23; CSMS #69326983';
   if (k.rule === 'all_in' && k.target !== null) {
     if (c.base.avePct >= k.target)
