@@ -1,0 +1,8 @@
+# Python lint for pipeline/ (run: uvx ruff check pipeline). E741 is off on purpose: `l` is this codebase's name for an
+# HTS line, as in the TypeScript engine.
+line-length = 130
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "W", "B"]
+ignore = ["E501", "E741"]
