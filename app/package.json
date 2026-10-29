@@ -1,15 +1,22 @@
 {
-  "name": "app",
+  "name": "tariffwiz",
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "oxlint",
     "preview": "vite preview",
+    "test": "vitest run",
+    "lint": "oxlint --deny-warnings",
+    "typecheck": "tsc -b && tsc --noEmit -p tsconfig.scripts.json",
+    "audit:headings": "tsx scripts/audit_headings.ts --max 150",
+    "check": "npm run lint && npm run typecheck && npm test && npm run audit:headings",
     "quote": "tsx scripts/quote.ts",
-    "audit:headings": "tsx scripts/audit_headings.ts --max 150"
+    "census": "tsx scripts/validate_census.ts"
   },
   "dependencies": {
     "react": "^19.3.1",

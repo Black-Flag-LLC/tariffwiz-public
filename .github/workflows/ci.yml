@@ -20,9 +20,11 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
       - run: npm ci
-      - run: npx vitest run          # golden tests gate every build
+      - run: npm run lint            # oxlint, warnings fail
+      - run: npm run typecheck       # app, tests and scripts
+      - run: npm test                # golden tests gate every build
       - run: npm run audit:headings  # every list a code is on files one of its Chapter 99 headings, on every answer path
-      - run: npm run build
+      - run: npx vite build          # tsc -b already ran in typecheck
       - uses: actions/upload-pages-artifact@v3
         with: { path: app/dist }
   deploy:

@@ -175,7 +175,7 @@ describe('described exemptions (note 52(c))', () => {
     const code = (JSON.parse(readFileSync(new URL('hts/ch08.json', DATA), 'utf8')) as HtsLine[])
       .find((x) => x.digits.startsWith('08059001') && x.digits.length >= 8)!.code;
     const no = run(code, 'IL', 10000);
-    const yes = run(code, 'IL', 10000, {}, { [`x:${it0.id}`]: true } as Answers);
+    const yes = run(code, 'IL', 10000, {}, { [`x:${it0.id}`]: true } as unknown as Answers);
     expect(no.questions.some((q) => q.id === `x:${it0.id}`)).toBe(true);
     expect(lineOf(yes, '9903.05.87')?.amount).toBe(0);
     expect(yes.duty).toBeLessThan(no.duty);

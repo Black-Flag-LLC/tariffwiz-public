@@ -14,7 +14,7 @@ from pathlib import Path
 import pymupdf
 
 ROOT = Path(__file__).resolve().parent.parent
-PDF = ROOT / "2026HTSRev21.pdf"
+PDF = ROOT / "data" / "source" / "2026HTSRev21.pdf"
 OUT = ROOT / "data" / "build" / "shaded_headings.json"
 HEAD = re.compile(r"^99\d\d\.\d\d\.\d\d$")
 

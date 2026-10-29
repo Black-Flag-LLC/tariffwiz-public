@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import { COUNTRIES, countryName, resolveCountry } from './countries';
 import { loadLine, loadPga, loadRules, loadSearch, type Pga } from './data';
@@ -95,20 +95,25 @@ export default function App() {
   const [data, setData] = useState<Data | null>(null);
   const [loadError, setLoadError] = useState('');
   const [ready, setReady] = useState(false);
-  const [line, setLine] = useState<HtsLine | undefined>();
-  const [loadingLine, setLoadingLine] = useState(false);
-  const [query, setQuery] = useState('');
+  // the line loaded for a code, kept with that code so a newer pick never shows an older line
+  const [loaded, setLoaded] = useState<{ hts: string; line?: HtsLine; fallback: boolean }>();
+  const current = form.hts && loaded?.hts === form.hts ? loaded : undefined;
+  const line = current?.line;
+  const fallback = !!current?.fallback;
+  const loadingLine = !!form.hts && !current;
+  const [query, setQueryState] = useState('');
   const [active, setActive] = useState(0);
+  const setQuery = useCallback((q: string) => { setQueryState(q); setActive(0); }, []);
   const [broker, setBroker] = useState(settings.defaultView === 'broker');
   const [pga, setPga] = useState<Pga | null>(null);
   const [history, setHistory] = useState<History>(readHistory);
   const [panel, setPanel] = useState<'none' | 'settings' | 'help'>('none');
   const [view, setViewState] = useState<'quote' | 'entry'>(() => (localStorage.getItem('tariffwiz.view') === 'entry' ? 'entry' : 'quote'));
   const setView = (v: 'quote' | 'entry') => { setViewState(v); try { localStorage.setItem('tariffwiz.view', v); } catch { /* ignore */ } };
-  const panelRef = useRef(panel); panelRef.current = panel;
-  const viewRef = useRef(view); viewRef.current = view;
+  const panelRef = useRef(panel);
+  const viewRef = useRef(view);
+  useLayoutEffect(() => { panelRef.current = panel; viewRef.current = view; }, [panel, view]);
   const [toast, setToast] = useState('');
-  const [fallback, setFallback] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const valueRef = useRef<HTMLInputElement>(null);
   const countryRef = useRef<HTMLInputElement>(null);
@@ -123,16 +128,17 @@ export default function App() {
     if (matchMedia('(min-width: 861px)').matches && !location.search) searchRef.current?.focus();
   }, []);
   useEffect(() => {
+    if (!form.hts) return;
     let live = true;
-    if (!form.hts) { setLine(undefined); setLoadingLine(false); return; }
-    setLoadingLine(true);
-    loadLine(form.hts).then(async (l) => {
-      const d = form.hts.replace(/\D/g, '');
-      if (!l && d.length === 10) { const parent = await loadLine(d.slice(0, 8)); if (parent && live) { setFallback(true); l = parent; } }
-      else if (live) setFallback(false);
-      if (live) { setLine(l); setLoadingLine(false); }
-    })
-      .catch(() => { if (live) { setLine(undefined); setLoadingLine(false); } });
+    const hts = form.hts, d = hts.replace(/\D/g, '');
+    (async () => {
+      const l = await loadLine(hts);
+      // a 10-digit code missing from the schedule falls back to its 8-digit line, flagged
+      const parent = !l && d.length === 10 ? await loadLine(d.slice(0, 8)) : undefined;
+      return { hts, line: l ?? parent, fallback: !!parent };
+    })()
+      .catch(() => ({ hts, line: undefined, fallback: false }))
+      .then((r) => { if (live) setLoaded(r); });
     return () => { live = false; };
   }, [form.hts]);
   useEffect(() => {
@@ -143,7 +149,6 @@ export default function App() {
 
   const hits = useMemo(() => (ready && query.trim().length > 1 ? search(query) : []), [query, ready]);
   const terms = useMemo(() => highlightTerms(query), [query]);
-  useEffect(() => setActive(0), [query]);
 
   const complete = !!form.origin && Number(form.value) > 0;
   const lineMatches = !!line && form.hts.replace(/\D/g, '').startsWith(line.digits);
@@ -177,7 +182,7 @@ export default function App() {
   };
   const reset = useCallback(() => {
     setForm(blank(settings)); setQuery(''); setBroker(settings.defaultView === 'broker'); searchRef.current?.focus();
-  }, [settings]);
+  }, [settings, setQuery]);
   const dirty = toQuery(form, settings) !== '' || !!query;
 
   const copySummary = useCallback(async () => {

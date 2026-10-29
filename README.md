@@ -1,32 +1,50 @@
-# React + TypeScript + Vite
+# TARIFFWIZ
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A free US import-duty calculator for importers and customs brokers. Pick an HTS code, enter origin, value, mode and
+dates, and get the duty with every line explained: the base rate, every Chapter 99 measure in force on the entry date
+(Sections 232, 301 and 338, country measures, safeguards, quotas), stacked in CBP filing order, plus MPF, HMF and
+other charges. Everything runs in the browser; nothing you type leaves your device.
 
-Currently, two official plugins are available:
+> Estimate for planning only, not legal or customs advice. The filer remains responsible for classification,
+> valuation, origin and ACE transmission.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Layout
 
-## React Compiler
+| Path | What it is |
+|---|---|
+| `app/` | The site: Vite + React + TypeScript. `src/engine/` is the duty engine (pure functions, golden-tested). |
+| `app/public/data/` | Data the site loads: HTS rows per chapter, `rules.json` (every Chapter 99 measure as data), search index. |
+| `app/scripts/` | Command-line tools on the same engine: `quote`, the filing audit, the Census validation. |
+| `pipeline/` | Python (standard library) that builds the data from USITC, Federal Register and CBP sources, and watches them. |
+| `.github/workflows/` | CI, the daily tariff watch and update job, the monthly Census check, publishing. |
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Develop
 
-## Expanding the Oxlint configuration
+Node 22+ and Python 3.11+.
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+cd app && npm ci
+npm run dev        # http://localhost:5173
+npm run check      # lint, typecheck, golden tests, filing audit
+npm run build      # static site in app/dist
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Quote from the command line:
+
+```bash
+npm --prefix app run quote --silent -- --hts 8708.29.51.90 --from PL --value 10000 --mode truck
+```
+
+## How the data stays current
+
+- **Daily:** a GitHub Actions job checks USITC for a new HTS revision, the Federal Register for tariff proclamations
+  and notices, and CBP CSMS messages, and posts new items to an issue.
+- **New HTS revision:** the job rebuilds the data, runs the golden tests, the filing audit and a check against the
+  duties CBP actually collected (Census import data), then opens a pull request listing every change. Chapter 99
+  rule changes are reviewed by hand before merging; nothing goes live until the pull request is merged.
+- **Monthly:** the Census check re-runs on the newest month and opens an issue if accuracy drops.
+
+## Sources
+
+US government data, public domain: the Harmonized Tariff Schedule (USITC), the Federal Register, CBP CSMS messages
+and Census merchandise trade data. Each result shows the HTS revision and the date the rules were last checked.

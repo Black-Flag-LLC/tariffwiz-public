@@ -33,7 +33,8 @@ function zip(files: { name: string; data: Uint8Array }[]): Uint8Array {
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-  // XML 1.0 forbids most control characters
+  // XML 1.0 forbids most control characters: matching them is the point
+  // oxlint-disable-next-line no-control-regex
   .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
 const col = (i: number) => { let s = ''; for (i++; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + ((i - 1) % 26)) + s; return s; };
 

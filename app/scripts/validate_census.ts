@@ -248,8 +248,8 @@ for (const key of sample) {
     const flips: [string, Answers][] = [];
     for (const q of e0.questions) {
       if (q.id === 'oldVehicle') continue;
-      if (q.kind === 'yesno') flips.push([`${q.id}=${!q.defaultValue}`, { [q.id]: !q.defaultValue } as Answers]);
-      else if (q.kind === 'choice') for (const o of q.options ?? []) if (o.value !== q.defaultValue) flips.push([`${q.id}=${o.value}`, { [q.id]: o.value } as Answers]);
+      if (q.kind === 'yesno') flips.push([`${q.id}=${!q.defaultValue}`, { [q.id]: !q.defaultValue } as unknown as Answers]);
+      else if (q.kind === 'choice') for (const o of q.options ?? []) if (o.value !== q.defaultValue) flips.push([`${q.id}=${o.value}`, { [q.id]: o.value } as unknown as Answers]);
     }
     const usc = [...e0.questions, ...(eC?.questions ?? [])].some((q) => q.id === 'usContent');
     for (const [label, ans] of flips) {

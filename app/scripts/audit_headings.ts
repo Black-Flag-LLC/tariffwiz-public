@@ -31,7 +31,7 @@ const DISPLACES_METALS = /^9903\.(94\.(0[13457]|3[1-3]|4\d|5\d|6\d)|74\.(0[1-489
 const metalsDisplaced = (r: Result) => r.lines.some((l) => DISPLACES_METALS.test(l.heading) || (l.heading === '9903.94.06' && /USMCA/.test(l.label)));
 // 9903.79.01 chips are not subject to the auto and auto-parts duties (39(a), L231848–231860)
 const chipDisplaces = (r: Result) => r.lines.some((l) => l.heading === '9903.79.01');
-const O232 = ['CN', 'DE', 'FR', 'JP', 'KR', 'GB', 'TW', 'IN', 'BR', 'VN', 'CH', 'MX', 'CA'].map((o) => ({ o }))
+const O232 = ['CN', 'DE', 'FR', 'JP', 'KR', 'GB', 'TW', 'IN', 'BR', 'VN', 'CH', 'MX', 'CA'].map((o): { o: string; claim?: string } => ({ o }))
   .concat([{ o: 'CA', claim: 'S' }, { o: 'MX', claim: 'S' }]);
 const FAMS: Fam[] = [
   { name: 'note 16 metals', codes: leavesOf(keysLike(/^s232:n16_c_/)), origins: O232, heads: /^9903\.(82|85)\./, excused: metalsDisplaced },

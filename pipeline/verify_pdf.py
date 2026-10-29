@@ -1,4 +1,4 @@
-"""Cross-check the parsed database against the official PDF (2026HTSRev21.pdf).
+"""Cross-check the parsed database against the official PDF (data/source/2026HTSRev21.pdf).
 
 For a random sample of 8-digit rate lines, find the code in the PDF text and check that
 the general-rate string appears on the same PDF line. Writes data/build/verify_report.json.
@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PDF = ROOT / "2026HTSRev21.pdf"
+PDF = ROOT / "data" / "source" / "2026HTSRev21.pdf"
 TXT = ROOT / "data" / "build" / "hts_rev21.txt"
 DB = ROOT / "data" / "build" / "hts.sqlite"
 
