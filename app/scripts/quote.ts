@@ -2,15 +2,19 @@
 //   npm --prefix app run quote -- --hts 6110.20.20.20 --from VN --value 5000 --mode air [--entry 2026-10-28]
 //     [--qty 100] [--qty2 20] [--claim S] [--loaded 2026-10-01] [--answers '{"metalWeight15":true}']
 import { readFileSync } from 'node:fs';
-import { calculate, digitsOf, ListIndex } from '../src/engine/calc';
+import { calculate, digitsOf, findLine, ListIndex } from '../src/engine/calc';
 import type { HtsLine, Input, Mode, Rules } from '../src/engine/types';
 
 const arg = (k: string) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : undefined; };
 const DATA = new URL('../public/data/', import.meta.url);
 const rules: Rules = JSON.parse(readFileSync(new URL('rules.json', DATA), 'utf8'));
 const hts = arg('hts') ?? '';
-const line = (JSON.parse(readFileSync(new URL(`hts/ch${digitsOf(hts).slice(0, 2)}.json`, DATA), 'utf8')) as HtsLine[])
-  .find((l) => l.digits === digitsOf(hts));
+const MODES = ['ocean', 'air', 'truck', 'rail', 'mail', 'other'];
+if (!/^\d{8,10}$/.test(digitsOf(hts))) { console.error(`--hts needs an 8- or 10-digit code, got "${hts}"`); process.exit(2); }
+if (!MODES.includes(arg('mode') ?? 'ocean')) { console.error(`--mode must be one of ${MODES.join(', ')}`); process.exit(2); }
+const shard = new URL(`hts/ch${digitsOf(hts).slice(0, 2)}.json`, DATA);
+let line: HtsLine | undefined;
+try { line = findLine(JSON.parse(readFileSync(shard, 'utf8')) as HtsLine[], hts); } catch { line = undefined; } // no such chapter
 const input: Input = { hts, origin: (arg('from') ?? '').toUpperCase(), value: Number(arg('value')), entryDate: arg('entry') ?? new Date().toISOString().slice(0, 10),
   loadingDate: arg('loaded'), mode: (arg('mode') ?? 'ocean') as Mode, quantity: arg('qty') ? Number(arg('qty')) : undefined,
   quantity2: arg('qty2') ? Number(arg('qty2')) : undefined, claim: arg('claim') ?? null, answers: arg('answers') ? JSON.parse(arg('answers')!) : {} };

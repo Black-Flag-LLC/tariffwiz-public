@@ -2,7 +2,7 @@
 // (country_measures.md §5, section232.md §7, section301_china.md §6), each with its proof lines there.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { calculate, digitsOf, ListIndex } from './calc';
+import { calculate, digitsOf, findLine, ListIndex } from './calc';
 import type { Answers, HtsLine, Input, Rules } from './types';
 
 const DATA = new URL('../../public/data/', import.meta.url);
@@ -147,6 +147,31 @@ describe('fees and guards', () => {
   it('rejects unsupported dates and unknown codes', () => {
     expect(run('9503.00.00.90', 'TH', 1000, { entryDate: '2026-01-15' }).ok).toBe(false);
     expect(run('0000.00.00.00', 'TH', 1000).ok).toBe(false);
+  });
+  it('charges content-weight rates on the content, not the gross weight', () => {
+    const base = (r: ReturnType<typeof run>) => r.lines.find((l) => l.family === 'base')!.amount;
+    // 18.7¢/clean kg on 5,000 clean-yield kg (units cy kg, kg)
+    expect(base(run('5101.11.60.30', 'ZA', 100000, { quantity: 5000, quantity2: 10000 }))).toBe(935);
+    // 12.8¢/kg on 5,000 kg molybdenum content + 1.8% of $100,000 (units kg, Mo kg)
+    expect(base(run('2613.10.00.00', 'CL', 100000, { quantity: 10000, quantity2: 5000 }))).toBe(2440);
+    // 16.9¢/kg of total sugars: asked; unanswered it assumes all 10,000 kg are sugar (+5.1%)
+    const s = run('1702.30.28.00', 'MX', 10000, { quantity: 10000 });
+    expect(base(s)).toBe(2200);
+    expect(base(run('1702.30.28.00', 'MX', 10000, { quantity: 10000 }, { 'comp:kg_total_sugars': 6000 } as unknown as Answers))).toBe(1524);
+  });
+  it('note 52(g): USMCA over-quota goods are not "entered free of duty", so they pay note 52', () => {
+    // 0402.10.50 CA, USMCA claimed, over quota (default): 86.5¢/kg base + 338 + note 52 +10% (9903.05.29)
+    const r = run('0402.10.50.00', 'CA', 100000, { mode: 'truck', quantity: 20000, claim: 'S' });
+    expect(charged(r)).toContain('9903.05.29=10000');
+    // in quota: free under USMCA, so exempt (9903.05.93)
+    const q = run('0402.10.50.00', 'CA', 100000, { mode: 'truck', quantity: 20000, claim: 'S' }, { ftaInQuota: true });
+    expect(headings(q)).toContain('9903.05.93');
+  });
+  it('an 8-digit code whose only statistical line is .00 resolves to that line', () => {
+    const ch04: HtsLine[] = JSON.parse(readFileSync(new URL('hts/ch04.json', DATA), 'utf8'));
+    expect(findLine(ch04, '0402.10.05')?.code).toBe('0402.10.05.00');
+    expect(findLine(ch04, '0402.10.10')?.code).toBe('0402.10.10.00');
+    expect(findLine(ch04, '0402.99.99')).toBeUndefined();
   });
   it('rejects Chapter 98 and 99 numbers typed as the product (they are claims and add-ons, not goods)', () => {
     for (const code of ['9903.88.01', '9817.00.60.00', '9801.00.10.12']) {

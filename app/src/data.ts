@@ -1,5 +1,5 @@
 // Static data loading (files built by pipeline/build_rules.py into public/data/).
-import { digitsOf, ListIndex } from './engine/calc';
+import { digitsOf, findLine, ListIndex } from './engine/calc';
 import type { HtsLine, Rules } from './engine/types';
 
 const BASE = `${import.meta.env.BASE_URL}data/`;
@@ -18,7 +18,7 @@ export async function loadLine(hts: string): Promise<HtsLine | undefined> {
   const ch = d.slice(0, 2);
   if (!shards.has(ch)) shards.set(ch, fetch(`${BASE}hts/ch${ch}.json`).then((r) => (r.ok ? r.json() : []))
     .catch((e) => { shards.delete(ch); throw e; }));
-  return (await shards.get(ch)!).find((l) => l.digits === d);
+  return findLine(await shards.get(ch)!, d);
 }
 
 export type Leaf = [code: string, desc: string, path: string, rate: string];

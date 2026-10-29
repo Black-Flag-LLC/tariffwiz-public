@@ -78,7 +78,8 @@ export default function EntryView({ rules, idx, today, defaults, notify, pga }: 
     const rows = parseLines(paste ?? '');
     if (!rows.length) { notify('No lines found: paste HTS, country, value (and optional qty, qty2, SPI) per row'); return; }
     setSt((s) => ({ ...s, rows: [...s.rows.filter((r) => r.hts || r.value), ...rows.map((r) => newRow(r))] }));
-    setPaste(null); notify(`${rows.length} line${rows.length > 1 ? 's' : ''} added`);
+    const gaps = rows.filter((r) => !r.origin || !r.value).length; // unknown country names and split values are left blank, not guessed
+    setPaste(null); notify(`${rows.length} line${rows.length > 1 ? 's' : ''} added${gaps ? ` · ${gaps} need a country or value` : ''}`);
   };
   const save = (data: BlobPart, type: string, ext: string) => {
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type })); a.download = `tariffwiz-entry-${st.entryDate}.${ext}`; a.click();

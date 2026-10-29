@@ -32,6 +32,23 @@ describe('multi-line entries', () => {
     const e = calculateEntry([item('8708.29.51.90', 'MX', 200000, { claim: 'S', mode: 'truck' }), item('9503.00.00.90', 'CN', 50000, { mode: 'truck' })], rules, idx);
     expect(mpf(e)).toBe(173.2); // only the $50,000 non-exempt line
   });
+  it('Chapter 98 lines: MPF only on the dutiable part of 9802.00.80, none on 9801.00.10 / 9802.00.50 (19 CFR 24.23(c))', () => {
+    const asm = calculateEntry([item('8708.30.50.20', 'MX', 500000, { mode: 'truck', ch98: { provision: '9802.00.80', deduct: 450000 } })], rules, idx);
+    expect(mpf(asm)).toBe(173.2); // 0.3464% × $50,000 dutiable
+    const ret = calculateEntry([item('6109.10.00.12', 'CN', 50000, { ch98: { provision: '9801.00.10' } }),
+      item('6109.10.00.12', 'CN', 50000, { ch98: { provision: '9802.00.50', deduct: 2000 } })], rules, idx);
+    expect(mpf(ret)).toBe(0);
+  });
+  it('entry type 23 (TIB) is MPF-exempt', () => {
+    const e = calculateEntry([item('6110.20.20.20', 'VN', 50000)], rules, idx, { entryType: '23' });
+    expect(mpf(e)).toBe(0);
+  });
+  it('a 9802 line keeps a formal entry when only its dutiable part is small', () => {
+    const r = calculate(item('6109.10.00.12', 'CN', 100000, { ch98: { provision: '9802.00.50', deduct: 2000 } }).input,
+      line('6109.10.00.12'), rules, idx);
+    expect(r.entryType).toBe('01');
+    expect(r.fees.find((f) => f.heading === 'HMF')!.amount).toBe(125);
+  });
   it('entry value ≤ $2,500 is informal: one flat fee, type 11', () => {
     const e = calculateEntry([item('9503.00.00.90', 'TH', 1000), item('9503.00.00.90', 'TH', 1000)], rules, idx);
     expect(e.entryType).toBe('11');
@@ -47,6 +64,9 @@ describe('multi-line entries', () => {
     expect(e.duty).toBe(1250);
   });
   it('parses pasted spreadsheet rows and exports CSV', () => {
+    // country names, decimal commas with semicolons, and no guessing on an unquoted thousands comma or an unknown name
+    expect(parseLines('6110.20.20.20\tChina\t$10,000\n6110.20.20.20;Viet Nam;10.000,50\n6110.20.20.20,Germany,10,000\n6110.20.20.20,Atlantis,500')
+      .map((r) => [r.origin, r.value])).toEqual([['CN', '10000'], ['VN', '10000.50'], ['DE', ''], ['', '500']]);
     const rows = parseLines('HTS\tCountry\tValue\n6109.10.00.12\tcn\t$10,000\t1200\t150\n9503.00.00.90,TH,2500');
     expect(rows).toEqual([
       { hts: '6109.10.00.12', origin: 'CN', value: '10000', quantity: '1200', quantity2: '150', claim: '' },

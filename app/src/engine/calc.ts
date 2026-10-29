@@ -113,9 +113,44 @@ export function unitMap(lineUnits: string[], per: string): { i: number; factor: 
   return hit(units.indexOf(p));
 }
 
+// "¢/kg on molybdenum content", "¢/clean kg", "¢/kg of total sugars": the duty is on a content weight, never the gross weight.
+const ELEMENTS: Record<string, string> = { molybdenum: 'mo', tungsten: 'w', magnesium: 'mg', copper: 'cu', lead: 'pb', zinc: 'zn',
+  nickel: 'ni', manganese: 'mn', vanadium: 'v', chromium: 'cr', cobalt: 'co', antimony: 'sb', silicon: 'si', tin: 'sn',
+  gold: 'au', silver: 'ag', platinum: 'pt', palladium: 'pd' };
+/** The content a rate is charged on, if any: from the parsed basis, an "of/on …" tail, or "clean kg". */
+function contentBasis(per: string, basis?: string): string | null {
+  return basis ?? per.match(/\s(?:of|on)\s+(.+)$/i)?.[1] ?? (/^clean\s/i.test(per) ? 'clean yield' : null);
+}
+/** The line's reporting unit for that content ("Mo kg", "cy kg", "kg ttl sug"), as [index, factor to kg]. */
+function contentUnit(units: string[], content: string): { i: number; factor: number } | null {
+  const el = Object.entries(ELEMENTS).find(([name]) => new RegExp(`\\b${name}\\b`, 'i').test(content))?.[1];
+  const want = el ? [`${el}kg`, `${el}t`] : /sugar/i.test(content) ? ['kgttlsug'] : /clean/i.test(content) ? ['cykg'] : [];
+  const i = units.map(unitNorm).findIndex((u) => want.includes(u));
+  return i < 0 ? null : { i, factor: unitNorm(units[i]).endsWith('t') ? 1000 : 1 };
+}
+
 /** Quantity in the rate's unit: from the line's reporting units when they match (converted), else asked for directly. */
 function unitQty(c: Ctx, per: string, basis?: string): { qty: number; known: boolean } {
   const why = `This line has a duty per ${per}${basis ? ` (${basis})` : ''}.`;
+  const content = contentBasis(per, basis);
+  if (content) {
+    const unit = per.replace(/\s+(of|on|including)\b.*$/i, '').replace(/^clean\s+/i, '');
+    const m = contentUnit(c.line.units, content);
+    if (m && (m.i === 0 || m.i === 1)) {
+      const v = m.i === 1 ? c.input.quantity2 : c.input.quantity;
+      if (v !== undefined) return { qty: v * m.factor, known: true };
+      const id = m.i === 1 ? 'quantity2' : 'quantity';
+      if (!c.questions.some((q) => q.id === id))
+        c.questions.push({ id, kind: 'number', defaultValue: 0, text: `How many ${UNIT_WORDS[unitNorm(unit)] ?? unit} of ${content}?`, why });
+      return { qty: 0, known: false };
+    }
+    // unanswered: the content is at most the gross quantity, so assume all of it (never under-quote)
+    const g = c.line.units.length ? unitMap(c.line.units, unit) : null;
+    const gv = g && (g.i === 0 || g.i === 1) ? (g.i === 1 ? c.input.quantity2 : c.input.quantity) : undefined;
+    const q = ask(c, { id: compKey(`${unit} ${content}`), kind: 'number', defaultValue: gv !== undefined && g ? gv * g.factor : 0,
+      text: `How many ${UNIT_WORDS[unitNorm(unit)] ?? unit} of ${content}?`, why: `${why} Until answered, all of the gross weight is assumed.` });
+    return { qty: q.value, known: !q.assumed };
+  }
   // 8-digit lines carry no reporting units: the quantity the user entered is the one to use
   const m = !c.line.units.length ? { i: 0, factor: 1 } : unitMap(c.line.units, per);
   if (m && (m.i === 0 || m.i === 1)) {
@@ -728,7 +763,8 @@ function note52(c: Ctx, blocked232: boolean): Line[] {
   const z = (heading: string, why: string): Line[] => [{ family: 's301_forced_labor', heading, label: `${label} (not applied)`, rate: 'exempt', amount: 0, why, cite: 'HTS ch.99 note 52' }];
   if (inTransit(c, n.inTransit)) return z(n.inTransit.heading, 'Loaded before 24 Jul 2026 and entered by 27 Jul 2026.');
   if (blocked232) return z('9903.05.90', 'Goods subject to Section 232 are exempt.');
-  if (k.usmcaExempt && (c.base.program === 'S' || c.base.program === 'S+'))
+  // 52(g) (L234047): only goods "entered free of duty under" USMCA; over-quota goods claim USMCA but pay the base rate
+  if (k.usmcaExempt && (c.base.program === 'S' || c.base.program === 'S+') && c.base.amount === 0)
     return z(input.origin === 'CA' ? '9903.05.93' : '9903.05.94', 'USMCA duty-free goods are exempt.');
   // 52(i): CAFTA-DR duty-free textile and apparel goods (chapters 50–63) of the six CAFTA-DR countries (L234057–234061)
   if (cafta && ['CR', 'DO', 'SV', 'GT', 'HN', 'NI'].includes(input.origin) && Number(c.line.chapter) >= 50 && Number(c.line.chapter) <= 63)
@@ -965,6 +1001,19 @@ const ORDER: Record<string, number> = { s338: 0, s301_china: 1, s301_brazil: 2, 
 const CH98: Record<string, string> = {
   '9801.00.10': 'US goods returned (not advanced in value)', '9802.00.50': 'Repaired or altered abroad', '9802.00.80': 'Assembled abroad from US components' };
 
+/** The line for a typed code. An 8-digit code whose only statistical line is .00 (8,080 subheadings) means that line. */
+export function findLine(lines: HtsLine[], hts: string): HtsLine | undefined {
+  const d = digitsOf(hts);
+  const exact = lines.find((l) => l.digits === d);
+  if (exact || d.length !== 8) return exact;
+  const kids = lines.filter((l) => l.digits.length === 10 && l.digits.startsWith(d));
+  return kids.length === 1 && kids[0].digits.endsWith('00') ? kids[0] : undefined;
+}
+
+/** 19 CFR 24.23(c)(1)-(2): Chapter 98 goods are MPF-exempt except 9802.00.60/.80, which pay on the dutiable part only. */
+const mpfExempt98 = (provision: string): Line => ({ family: 'fee', heading: 'MPF', label: 'Merchandise processing fee', rate: 'exempt', amount: 0,
+  why: `Chapter 98 goods (${provision}) are exempt; only 9802.00.60 and 9802.00.80 pay, on their dutiable part.`, cite: '19 CFR 24.23(c)(1)-(2)' });
+
 /** Chapter 98 claims. 9801.00.10: US goods returned are free and outside every Chapter 99 duty. 9802.00.50 / 9802.00.80: every
  *  duty (base and Chapter 99) is assessed on the value of the repairs, or on the value less the US components; the notes
  *  reserve full-value assessment for 9802.00.60 only (e.g. 33(f) L230705–230707, 38(a), 29(a)). HMF stays on the full cargo value. */
@@ -986,20 +1035,21 @@ export function calculate(input: Input, line: HtsLine | undefined, rules: Rules,
     cite: `HTS ${claim.provision}; ch.98 subch. II notes` };
   const hmf = full.fees.find((f) => f.heading === 'HMF');
   if (dutiable <= 0) {
-    const fees = full.fees.filter((f) => f.heading !== 'MPF' || f.rate === 'exempt').concat(full.fees.filter((f) => f.heading === 'MPF' && f.rate !== 'exempt').map((f) => ({ ...f,
-      why: `${f.why} Check whether your Chapter 98 claim is MPF-exempt (19 CFR 24.23(c)).`, assumed: f.assumed ?? 'MPF charged on a duty-free Chapter 98 line' })));
+    const fees = full.fees.map((f) => (f.heading === 'MPF' ? mpfExempt98(claim.provision) : f));
     const base = full.lines.find((l) => l.family === 'base')!;
     const lines = [ch98Line, { ...base, rate: 'Free', amount: 0, why: `Free under ${claim.provision}.` }];
     const feesTotal = cents(fees.reduce((s, f) => s + f.amount, 0));
     return { ...full, lines, fees, duty: 0, feesTotal, total: feesTotal, effectivePct: 0, questions: [], defaults: [],
       notes: [`${claim.provision}: ${CH98[claim.provision]}. Keep the export and return documents (19 CFR 10.1).`] };
   }
-  const part = calculateCore({ ...plain, value: dutiable }, line, rules, idx);
+  // formal/informal still follows the full value; MPF is on the dutiable part for 9802.00.80, none for 9802.00.50
+  const part = calculateCore({ ...plain, value: dutiable, entryValue: input.value }, line, rules, idx);
   if (!part.ok) return part;
-  const fees = part.fees.map((f) => (f.heading === 'HMF' && hmf ? hmf : f));
+  const fees = part.fees.map((f) => (f.heading === 'HMF' && hmf ? hmf : f.heading === 'MPF' && claim.provision !== '9802.00.80' ? mpfExempt98(claim.provision) : f));
   const feesTotal = cents(fees.reduce((s, f) => s + f.amount, 0));
   const lines = [...part.lines, ch98Line].sort((x, y) => ORDER[x.family] - ORDER[y.family]);
   return { ...part, lines, fees, feesTotal, total: cents(part.duty + feesTotal), effectivePct: Number(((part.duty / input.value) * 100).toFixed(2)),
+    mpfBase: claim.provision === '9802.00.80' ? dutiable : undefined,
     notes: [`${claim.provision}: duties figured on $${dutiable.toLocaleString('en-US')} of the $${input.value.toLocaleString('en-US')} value.`, ...part.notes] };
 }
 
@@ -1075,7 +1125,7 @@ function calculateCore(input: Input, line: HtsLine | undefined, rules: Rules, id
     }
     c.notes.push('AD/CVD goods need a formal type 03 entry, and the importer must file the non-reimbursement certificate (19 CFR 351.402(f)).');
   }
-  const formal = !!input.inEntry || input.value > 2500 || exact.length > 0;
+  const formal = !!input.inEntry || (input.entryValue ?? input.value) > 2500 || exact.length > 0;
   const feeLines = fees(c, formal);
   const entryType: Result['entryType'] = exact.length ? '03' : formal ? '01' : '11';
   valueBracketCheck(c);

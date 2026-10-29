@@ -4,6 +4,7 @@
 import { calculate, cents, CHIP_NOTICE, ListIndex } from './calc';
 import type { HtsLine, Input, Line, Result, Rules } from './types';
 import { xlsx } from './xlsx';
+import { resolveCountry } from '../countries';
 
 /** ACE entry types this tool prices: consumption 01, AD/CVD 03, FTZ consumption 06, informal 11, warehouse 21, TIB 23 */
 export type EntryType = '01' | '03' | '06' | '11' | '21' | '23';
@@ -48,7 +49,8 @@ export function calculateEntry(items: EntryLine[], rules: Rules, idx = new ListI
   const fees: Line[] = [];
 
   // MPF once per entry
-  const dutiable = ok.filter((l) => l.fees.find((f) => f.heading === 'MPF')?.rate !== 'exempt');
+  // TIB (23) is MPF-exempt (CATAIR note m)
+  const dutiable = opts.entryType === '23' ? [] : ok.filter((l) => l.fees.find((f) => f.heading === 'MPF')?.rate !== 'exempt');
   const adcvd = ok.some((l) => l.entryType === '03');
   const chosen = opts.entryType || undefined;
   const informal = chosen ? chosen === '11' : value <= 2500 && !adcvd;
@@ -61,12 +63,13 @@ export function calculateEntry(items: EntryLine[], rules: Rules, idx = new ListI
   if (chosen === '23') warnings.push('Temporary importation bond (23): no duty is paid if the goods are exported in time; the bond is usually set at twice the estimated duty (19 CFR 10.31(f)).');
   if (!dutiable.length) {
     fees.push({ family: 'fee', heading: 'MPF', label: 'Merchandise processing fee', rate: 'exempt', amount: 0,
-      why: 'Every line is exempt (trade-agreement claims or mail).', cite: '19 CFR 24.23(c)' });
+      why: opts.entryType === '23' ? 'Temporary importation bond (23) entries are exempt.' : 'Every line is exempt (trade-agreement claims, Chapter 98 or mail).',
+      cite: opts.entryType === '23' ? '19 CFR 24.23(c); CATAIR note (m)' : '19 CFR 24.23(c)' });
   } else if (informal) {
     fees.push({ family: 'fee', heading: 'MPF', label: 'Merchandise processing fee (informal entry)', rate: 'flat', amount: mode === 'mail' ? 0 : fy.informal,
       why: mode === 'mail' ? 'Postal informal entry: no fee.' : 'Entry value of $2,500 or less: informal entry, one flat fee.', cite: '19 CFR 24.23(b)(2)' });
   } else {
-    const raw = dutiable.reduce((s, l) => s + l.input.value * 0.003464, 0);
+    const raw = dutiable.reduce((s, l) => s + (l.mpfBase ?? l.input.value) * 0.003464, 0);
     const amt = Math.min(fy.max, Math.max(fy.min, raw));
     fees.push({ family: 'fee', heading: 'MPF', label: 'Merchandise processing fee', rate: '0.3464%', amount: cents(amt),
       why: raw < fy.min ? `0.3464% of the dutiable lines is $${raw.toFixed(2)}: raised to the entry minimum of $${fy.min}.`
@@ -79,6 +82,11 @@ export function calculateEntry(items: EntryLine[], rules: Rules, idx = new ListI
     const hmf = cents(value * 0.00125);
     fees.push({ family: 'fee', heading: 'HMF', label: 'Harbor maintenance fee', rate: '0.125%', amount: hmf, why: 'Charged on cargo arriving by ship.', cite: '19 CFR 24.24' });
   }
+  // same rule as a single quote: HMF of $3 or less isn't collected when nothing else is due
+  const hmfLine = fees.find((f) => f.heading === 'HMF');
+  if (hmfLine && hmfLine.amount <= 3 && duty === 0 && fees.every((f) => f === hmfLine || f.amount === 0)
+    && !ok.some((l) => l.fees.some((f) => (f.heading === 'Cotton' || f.heading === 'Excise') && f.amount > 0)))
+    Object.assign(hmfLine, { amount: 0, why: 'Not collected: $3 or less with nothing else due.' });
   for (const head of ['Cotton', 'Excise']) {
     const parts = ok.flatMap((l) => l.fees.filter((f) => f.heading === head));
     if (!parts.length || (head === 'Cotton' && informal)) continue;
@@ -160,10 +168,23 @@ export function entryText(e: EntryResult, meta: { mode: string; entryDate: strin
 
 /** Parse pasted spreadsheet rows: HTS, country, value[, qty[, qty2[, SPI]]] separated by tabs, commas or semicolons. */
 export function parseLines(text: string): { hts: string; origin: string; value: string; quantity: string; quantity2: string; claim: string }[] {
+  // "10.000,50" / "10000,50" with semicolons (European spreadsheets): comma is the decimal mark; otherwise commas group thousands
+  const num = (s: string | undefined, semi: boolean) => {
+    const t = (s ?? '').replace(/[$\s]/g, '');
+    return (semi && /^\d{1,3}(\.\d{3})*,\d+$|^\d+,\d+$/.test(t) ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '')).replace(/[^\d.]/g, '');
+  };
   // one delimiter per row: tab (spreadsheet paste) > semicolon > comma outside quotes ("$10,000" stays whole when tab-separated)
+  const delim = (r: string) => (r.includes('\t') ? 'tab' : r.includes(';') ? 'semi' : 'comma');
   const split = (r: string) => (r.includes('\t') ? r.split('\t') : r.includes(';') ? r.split(';') : r.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/));
-  return text.split(/\r?\n/).map((r) => r.trim()).filter(Boolean).map((r) => split(r).map((c) => c.replace(/^"|"$/g, '').trim()))
-    .filter((c) => /\d{4}\.?\d{2}/.test(c[0] ?? ''))
-    .map((c) => ({ hts: c[0], origin: (c[1] ?? '').toUpperCase().slice(0, 2), value: (c[2] ?? '').replace(/[^\d.]/g, ''),
-      quantity: (c[3] ?? '').replace(/[^\d.]/g, ''), quantity2: (c[4] ?? '').replace(/[^\d.]/g, ''), claim: (c[5] ?? '').toUpperCase() }));
+  return text.split(/\r?\n/).map((r) => r.trim()).filter(Boolean)
+    .map((r) => ({ d: delim(r), c: split(r).map((x) => x.replace(/^"|"$/g, '').trim()) }))
+    .filter(({ c }) => /\d{4}\.?\d{2}/.test(c[0] ?? ''))
+    .map(({ d, c }) => {
+      const semi = d === 'semi';
+      // unquoted "10,000" in comma-separated text splits into "10" and "000": leave the value empty rather than guess
+      const broken = d === 'comma' && /^\$?\d{1,3}$/.test(c[2] ?? '') && /^\d{3}(\.\d+)?$/.test(c[3] ?? '');
+      // a name ("China") or code ("cn"); unknown text stays empty instead of becoming its first two letters
+      return { hts: c[0], origin: resolveCountry(c[1] ?? ''), value: broken ? '' : num(c[2], semi),
+        quantity: broken ? '' : num(c[3], semi), quantity2: broken ? '' : num(c[4], semi), claim: (c[5] ?? '').toUpperCase() };
+    });
 }

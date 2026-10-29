@@ -151,7 +151,8 @@ export default function App() {
   const terms = useMemo(() => highlightTerms(query), [query]);
 
   const complete = !!form.origin && Number(form.value) > 0;
-  const lineMatches = !!line && form.hts.replace(/\D/g, '').startsWith(line.digits);
+  // the loaded line is this code, its 8-digit parent (fallback), or its only .00 line (8-digit code typed)
+  const lineMatches = !!line && (form.hts.replace(/\D/g, '').startsWith(line.digits) || line.digits.startsWith(form.hts.replace(/\D/g, '')));
   const result = useMemo(() => (data && line && lineMatches && complete ? compute(form, line, data) : null), [data, line, form, complete, lineMatches]);
 
   const claims = useMemo(() => {

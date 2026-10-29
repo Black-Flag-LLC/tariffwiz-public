@@ -17,13 +17,15 @@ export const ALIASES: Record<string, string> = {
   holland: 'NL', czech: 'CZ', 'czech republic': 'CZ', russia: 'RU',
   vietnam: 'VN', 'viet nam': 'VN', taiwan: 'TW', macau: 'MO', burma: 'MM', 'ivory coast': 'CI', uae: 'AE', emirates: 'AE',
   laos: 'LA', syria: 'SY', iran: 'IR', bolivia: 'BO', venezuela: 'VE', tanzania: 'TZ', moldova: 'MD',
+  'hong kong': 'HK', 'united states': 'US', usa: 'US', 'mainland china': 'CN', prc: 'CN', 'people\'s republic of china': 'CN',
 };
 const ISO = new Set(COUNTRIES.map((c) => c.code));
+const BY_NAME = new Map(COUNTRIES.map((c) => [c.name.toLowerCase(), c.code]));
 /** A valid ISO2 code for typed text, or '' (e.g. "UK" in a link -> "GB"). */
 export function resolveCountry(t: string): string {
   const s = t.trim().toLowerCase();
   if (!s) return '';
   if (ALIASES[s]) return ALIASES[s];
   const up = s.toUpperCase();
-  return ISO.has(up) ? up : '';
+  return ISO.has(up) ? up : BY_NAME.get(s) ?? ''; // full English names too ("China", "Germany")
 }
