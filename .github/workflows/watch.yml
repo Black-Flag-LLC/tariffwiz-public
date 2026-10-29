@@ -1,0 +1,27 @@
+name: tariff-watch
+on:
+  schedule: [{ cron: '17 12 * * *' }]   # daily, 12:17 UTC
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - id: w
+        run: |
+          set +e
+          python -I pipeline/watch.py > report.md; echo "code=$?" >> "$GITHUB_OUTPUT"
+          cat report.md
+      - if: steps.w.outputs.code == '2'
+        run: exit 1   # the check itself failed (network/API), don't open an empty issue
+      - if: steps.w.outputs.code == '1'
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          title="Tariff watch: changes to review"
+          n=$(gh issue list --state open --search "$title in:title" --json number -q '.[0].number')
+          if [ -n "$n" ]; then gh issue comment "$n" --body-file report.md; else gh issue create --title "$title" --body-file report.md; fi

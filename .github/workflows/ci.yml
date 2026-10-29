@@ -1,0 +1,38 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy to GitHub Pages (needs the repo public with Pages on)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  test-build:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: app } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - run: npm ci
+      - run: npx vitest run          # golden tests gate every build
+      - run: npm run audit:headings  # every list a code is on files one of its Chapter 99 headings, on every answer path
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: app/dist }
+  deploy:
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy
+    needs: test-build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment: { name: github-pages, url: '${{ steps.d.outputs.page_url }}' }
+    steps:
+      - id: d
+        uses: actions/deploy-pages@v4
