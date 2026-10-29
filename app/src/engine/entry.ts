@@ -1,7 +1,7 @@
 // Multi-line entries: each line priced by calculate(); entry-level fees recomputed once per entry.
 // MPF: sum of non-exempt lines' 0.3464%, then the fiscal-year min/max once per entry (19 CFR 24.23;
 // ACE CATAIR). Informal entry (total value ≤ $2,500): one flat fee. HMF: 0.125% of ocean cargo value.
-import { calculate, cents, ListIndex } from './calc';
+import { calculate, cents, CHIP_NOTICE, ListIndex } from './calc';
 import type { HtsLine, Input, Line, Result, Rules } from './types';
 import { xlsx } from './xlsx';
 
@@ -89,6 +89,7 @@ export function calculateEntry(items: EntryLine[], rules: Rules, idx = new ListI
   const feesTotal = cents(fees.reduce((s, f) => s + f.amount, 0));
   const byFamily: Record<string, number> = {};
   for (const l of ok) for (const x of l.lines) byFamily[x.family] = cents((byFamily[x.family] ?? 0) + x.amount);
+  for (const l of ok) if (l.lines.some((x) => x.heading === '9903.79.02' && x.assumed)) warnings.push(`Line ${l.n}: ${CHIP_NOTICE}`);
   const autoType = adcvd ? '03' : informal ? '11' : '01';
   const deferred = chosen === '21' || chosen === '23';
   return { lines, fees, duty, feesTotal, total: cents(duty + feesTotal), value, entryType: chosen ?? autoType, autoType,

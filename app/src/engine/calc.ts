@@ -275,6 +275,8 @@ function applyOffset(c: Ctx, l: Line | undefined, procl: string) {
   if (off > 0) { l.amount = cents(l.amount - off); l.why += ` Reduced by a $${off.toLocaleString('en-US')} import adjustment offset (${procl}).`; }
 }
 
+export const CHIP_NOTICE = 'Chip tariff not applied: we assumed no advanced AI chip. If this contains a logic chip in the note 39 performance window (e.g. AI accelerators or servers built on them), answer Yes: +25% under 9903.79.01.';
+
 function section232(c: Ctx): S232 {
   const { input, idx, line } = c;
   const h = input.hts;
@@ -292,7 +294,12 @@ function section232(c: Ctx): S232 {
       text: 'Does it contain a logic chip in the note 39 performance window?',
       why: 'Qualifying semiconductors pay +25% under Section 232 unless a US end use applies; others pay nothing extra.' });
     const cite = 'HTS ch.99 note 39; L231833–231955';
-    if (!q.value) lines.push(add232('9903.79.02', 'Section 232 semiconductors (not covered)', 0, input.value, 'Does not meet the note 39(b) technical test.', cite));
+    if (!q.value) {
+      lines.push(add232('9903.79.02', 'Section 232 semiconductors (not covered)', 0, input.value, 'Does not meet the note 39(b) technical test.', cite,
+        q.assumed ? { assumed: 'no qualifying AI chip' } : {}));
+      // Zac 2026-10-29: keep the default "no" (real data) but say so plainly
+      if (q.assumed) c.notes.unshift(CHIP_NOTICE);
+    }
     else {
       const use = ask(c, { id: 'chipUse', kind: 'choice', defaultValue: 'none',
         options: [{ value: 'none', label: 'None of these' }, { value: '9903.79.03', label: 'US data center (>100 MW new AI load)' },
