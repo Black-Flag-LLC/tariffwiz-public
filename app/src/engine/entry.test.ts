@@ -39,6 +39,22 @@ describe('multi-line entries', () => {
       item('6109.10.00.12', 'CN', 50000, { ch98: { provision: '9802.00.50', deduct: 2000 } })], rules, idx);
     expect(mpf(ret)).toBe(0);
   });
+  it('mail lines that must be formal make the whole entry formal (19 CFR 145.12(a)(2)), with the reason', () => {
+    const e = calculateEntry([item('6110.20.20.20', 'CN', 1000, { mode: 'mail', entryDate: '2027-02-01' })], rules, idx);
+    expect(e.entryType).toBe('01');
+    expect(e.warnings.join(' ')).toMatch(/145\.12/);
+  });
+  it('a banned line keeps its questions so the Entry view can ask "arrived before?"', () => {
+    const e = calculateEntry([item('2204.21.50.40', 'CA', 10000, { mode: 'truck', entryDate: '2026-10-29' })], rules, idx);
+    expect(e.lines[0].ok).toBe(false);
+    expect(e.lines[0].questions.map((q) => q.id)).toContain('arrivedBeforeBan');
+  });
+  it('pasted numbers: decimal commas in any delimiter, US thousands, no guessing on "100,250"', () => {
+    const T = '\t';
+    const rows = parseLines([`8471.30.01.00${T}CN${T}10000,50${T}5`, `8471.30.01.00${T}DE${T}10.000,50`, '8471.30.01.00;DE;10.000;5',
+      '8471.30.01.00,CN,100,250', '8471.30.01.00,CN,10,000'].join('\n'));
+    expect(rows.map((r) => [r.value, r.quantity])).toEqual([['10000.50', '5'], ['10000.50', ''], ['10000', '5'], ['100', '250'], ['', '']]);
+  });
   it('entry type 23 (TIB) is MPF-exempt', () => {
     const e = calculateEntry([item('6110.20.20.20', 'VN', 50000)], rules, idx, { entryType: '23' });
     expect(mpf(e)).toBe(0);

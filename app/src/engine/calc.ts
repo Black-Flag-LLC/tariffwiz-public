@@ -72,6 +72,7 @@ interface Ctx {
   notes: string[];
   base: { amount: number; avePct: number; rateText: string; program: string | null };
   quotaHeading?: string;  // FTA in-quota provision claimed (filed with the commodity line)
+  formalRequired?: string; // why a formal entry is required whatever the value (mail rules)
 }
 
 function isEU(rules: Rules, iso: string) {
@@ -145,7 +146,8 @@ function contentBasis(per: string, basis?: string): string | null {
 /** The line's reporting unit for that content ("Mo kg", "cy kg", "kg ttl sug"), as [index, factor to kg]. */
 function contentUnit(units: string[], content: string): { i: number; factor: number } | null {
   const el = Object.entries(ELEMENTS).find(([name]) => new RegExp(`\\b${name}\\b`, 'i').test(content))?.[1];
-  const want = el ? [`${el}kg`, `${el}t`] : /sugar/i.test(content) ? ['kgttlsug'] : /clean/i.test(content) ? ['cykg'] : [];
+  const want = el ? [`${el}kg`, `${el}t`] : /sugar/i.test(content) ? ['kgttlsug'] : /clean/i.test(content) ? ['cykg']
+    : /alcohol/i.test(content) ? ['pf.liter', 'proofliter'] : [];
   const i = units.map(unitNorm).findIndex((u) => want.includes(u));
   return i < 0 ? null : { i, factor: unitNorm(units[i]).endsWith('t') ? 1000 : 1 };
 }
@@ -1055,7 +1057,8 @@ function polysilicon232(c: Ctx): Line[] {
     why: 'Without it the full minimum price is charged as duty; with it, only the amount the entered value falls short of the minimum price.' });
   const q = unitQty(c, g.per === 'W' ? 'W' : 'kg');
   const floor = g.mip * q.qty;
-  const amount = docs.value === 'none' ? floor : Math.max(0, floor - input.value);
+  // cl. (2)(c): the shortfall below "the entered value on the entry summary" (the full value, also under Chapter 98)
+  const amount = docs.value === 'none' ? floor : Math.max(0, floor - (input.entryValue ?? input.value));
   const unit = g.per === 'W' ? 'W' : 'kg';
   out.push({ family: 's232', heading: g.heading, label: 'Section 232 polysilicon minimum import price', rate: `$${g.mip}/${unit}`, amount: cents(amount),
     why: !q.known ? `Charged at $${g.mip} per ${unit}: enter the ${g.per === 'W' ? 'total watts' : 'net kilograms'} to price it.`
@@ -1323,7 +1326,7 @@ function calculateCore(input: Input, line: HtsLine | undefined, rules: Rules, id
   if (input.mode === 'mail') {
     const alcTob = /^(220[3-8]|24)/.test(line.digits);
     const limit = ['VI', 'GU', 'AS'].includes(input.origin) ? 200 : 100;
-    const gift = !alcTob && input.value <= limit && ask(c, { id: 'mailGift', kind: 'yesno', defaultValue: false,
+    const gift = !alcTob && !exact.length && input.value <= limit && ask(c, { id: 'mailGift', kind: 'yesno', defaultValue: false,
       text: `Is this a bona fide gift from a person abroad, worth $${limit} or less in all to this person today?`,
       why: 'Gifts within the limit pass free of duty and tax, Chapter 99 included (19 U.S.C. 1321(a)(2)(A); 19 CFR 10.152, 145.32).' }).value;
     if (gift) {
@@ -1338,6 +1341,7 @@ function calculateCore(input: Input, line: HtsLine | undefined, rules: Rules, id
     }
   }
   const formal = !!input.inEntry || (input.entryValue ?? input.value) > 2500 || exact.length > 0 || mailFormal;
+  if (mailFormal) c.formalRequired = c.notes[c.notes.length - 1];
   const feeLines = fees(c, formal);
   const entryType: Result['entryType'] = exact.length ? '03' : formal ? '01' : '11';
   valueBracketCheck(c);
@@ -1350,5 +1354,6 @@ function calculateCore(input: Input, line: HtsLine | undefined, rules: Rules, id
     Object.assign(hmf, { amount: 0, why: 'Not collected: $3 or less with nothing else due.' });
   const feesTotal = cents(feeLines.reduce((s, l) => s + l.amount, 0));
   return { ok: true, line, lines, fees: feeLines, duty, feesTotal, total: cents(duty + feesTotal),
-    effectivePct: Number(((duty / input.value) * 100).toFixed(2)), questions: c.questions, notes: c.notes, adcvd: ad, entryType, defaults, revision: rules.meta.revision };
+    effectivePct: Number(((duty / input.value) * 100).toFixed(2)), questions: c.questions, notes: c.notes, adcvd: ad, entryType, defaults, revision: rules.meta.revision,
+    ...(c.formalRequired ? { formalRequired: c.formalRequired } : {}) };
 }

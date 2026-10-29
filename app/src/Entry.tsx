@@ -128,7 +128,7 @@ export default function EntryView({ rules, idx, today, defaults, notify, pga }: 
             {st.rows.map((r, i) => {
               const l = lines[digitsOf(r.hts)];
               const res = resultFor(r);
-              const qs = res?.ok ? res.questions : [];
+              const qs = res?.questions ?? [];
               return (
                 <div key={r.id} className={`eline ${res && !res.ok ? 'bad' : ''}`} role="group" aria-label={`Line ${i + 1}`}>
                   <span className="n">{i + 1}</span>
@@ -170,7 +170,7 @@ export default function EntryView({ rules, idx, today, defaults, notify, pga }: 
                         {(r.ch98 === '9802.00.50' || r.ch98 === '9802.00.80') && <input inputMode="decimal" aria-label={r.ch98 === '9802.00.50' ? 'Value of the repairs' : 'Value of the US components'}
                           placeholder={r.ch98 === '9802.00.50' ? 'Repairs value' : 'US components value'} value={r.ch98Deduct ?? ''}
                           onChange={(e) => setRow(r.id, { ch98Deduct: e.target.value.replace(/[^\d.]/g, '') })} />}</div>
-                      {res?.ok && qs.map((q) => <LineQuestion key={q.id} q={q} answers={r.answers} quantities={r} set={(p) => setRow(r.id, p)} />)}
+                      {qs.map((q) => <LineQuestion key={q.id} q={q} answers={r.answers} quantities={r} set={(p) => setRow(r.id, p)} />)}
                     </div>
                   )}
                 </div>

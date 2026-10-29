@@ -194,6 +194,7 @@ export interface Result {
   notes: string[];           // other charges and caveats
   adcvd: { case: string; type: 'AD' | 'CVD'; product: string; url: string | null; broad: boolean }[]; // orders that may apply (rates are per company)
   entryType: '01' | '03' | '11'; // 01 formal consumption, 03 AD/CVD consumption, 11 informal
+  formalRequired?: string;   // a formal entry is required whatever the value (mail rules), with the reason
   mpfBase?: number;          // value the formal MPF is figured on when it isn't the line value (9802.00.80: dutiable part)
   defaults: { id: string; text: string; value: string | number | boolean }[]; // questions answered with defaults
   revision: string;

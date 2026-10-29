@@ -103,6 +103,10 @@ def main():
         # USTR / CBP notices about tariffs or HTS modifications
         [("conditions[agencies][]", "trade-representative-office-of-united-states"), ("conditions[term]", "tariff")],
         [("conditions[agencies][]", "u-s-customs-and-border-protection"), ("conditions[term]", "\"Harmonized Tariff Schedule\"")],
+        # Commerce, BIS and ITA Section 232 notices (inclusion processes, list changes, stockpiling rules)
+        [("conditions[agencies][]", "commerce-department"), ("conditions[term]", "\"Section 232\"")],
+        [("conditions[agencies][]", "industry-and-security-bureau"), ("conditions[term]", "\"Section 232\"")],
+        [("conditions[agencies][]", "international-trade-administration"), ("conditions[term]", "\"Section 232\"")],
     ]
     seen = set()
     for extra in queries:

@@ -260,6 +260,20 @@ describe('fees and guards', () => {
     expect(headings(d)).toContain('9903.88.27');
     expect(headings(d)).not.toContain('9903.88.15');
   });
+  it('polysilicon minimum-price shortfall uses the entered value, also under a Chapter 98 claim (PP 11052 cl. (2)(c))', () => {
+    const mip = (ch98?: Input['ch98']) => run('8541.43.00.10', 'MY', 100000, { entryDate: '2026-12-10', quantity: 1, quantity2: 200000, ch98 },
+      { polyDocs: 'resale_at_or_above' } as Answers).lines.find((l) => l.heading === '9903.45.36')?.amount;
+    expect(mip()).toBe(0);
+    expect(mip({ provision: '9802.00.80', deduct: 60000 })).toBe(0);   // entered value $100,000 is above $76,000
+  });
+  it('proof-liter rates on alcohol content use the line proof liters (no duplicate question)', () => {
+    const r = run('2206.00.30.00', 'DE', 5000, { quantity: 1000, quantity2: 120 });
+    expect(r.questions.some((q) => /proof liters of/.test(q.text))).toBe(false);
+  });
+  it('no gift exemption on goods under an AD/CVD order', () => {
+    const r = run('2828.10.00.00', 'CN', 80, { mode: 'mail', entryDate: '2026-11-01' });
+    expect(r.questions.some((q) => q.id === 'mailGift')).toBe(false);
+  });
   it('rejects Chapter 98 and 99 numbers typed as the product (they are claims and add-ons, not goods)', () => {
     for (const code of ['9903.88.01', '9817.00.60.00', '9801.00.10.12']) {
       const r = run(code, 'CN', 1000);

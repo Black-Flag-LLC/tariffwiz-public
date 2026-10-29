@@ -53,8 +53,10 @@ export function calculateEntry(items: EntryLine[], rules: Rules, idx = new ListI
   const dutiable = opts.entryType === '23' ? [] : ok.filter((l) => l.fees.find((f) => f.heading === 'MPF')?.rate !== 'exempt');
   const adcvd = ok.some((l) => l.entryType === '03');
   const chosen = opts.entryType || undefined;
-  const informal = chosen ? chosen === '11' : value <= 2500 && !adcvd;
+  const mustFormal = ok.find((l) => l.formalRequired);
+  const informal = chosen ? chosen === '11' : value <= 2500 && !adcvd && !mustFormal;
   const warnings: string[] = [];
+  if (mustFormal) warnings.push(`Line ${mustFormal.n}: ${mustFormal.formalRequired}`);
   if (chosen === '11' && value > 2500) warnings.push('Informal entry (11) is limited to $2,500 total value; this entry needs a formal entry.');
   if (chosen && adcvd && chosen !== '03') warnings.push('Lines covered by an AD/CVD order must be filed on a type 03 entry.');
   if (chosen === '03' && !adcvd) warnings.push('Type 03 is for AD/CVD goods; no line here matched an order.');
@@ -169,9 +171,13 @@ export function entryText(e: EntryResult, meta: { mode: string; entryDate: strin
 /** Parse pasted spreadsheet rows: HTS, country, value[, qty[, qty2[, SPI]]] separated by tabs, commas or semicolons. */
 export function parseLines(text: string): { hts: string; origin: string; value: string; quantity: string; quantity2: string; claim: string }[] {
   // "10.000,50" / "10000,50" with semicolons (European spreadsheets): comma is the decimal mark; otherwise commas group thousands
+  // Number formats: "10,000.50" (US), "10.000,50" or "10000,50" (decimal comma: 1-2 digits after the last comma),
+  // "10.000" in a semicolon row (European thousands). A comma followed by 3 digits is always a thousands mark.
   const num = (s: string | undefined, semi: boolean) => {
     const t = (s ?? '').replace(/[$\s]/g, '');
-    return (semi && /^\d{1,3}(\.\d{3})*,\d+$|^\d+,\d+$/.test(t) ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '')).replace(/[^\d.]/g, '');
+    if (/^\d{1,3}(\.\d{3})*,\d{1,2}$|^\d+,\d{1,2}$/.test(t)) return t.replace(/\./g, '').replace(',', '.');
+    if (semi && /^\d{1,3}(\.\d{3})+$/.test(t)) return t.replace(/\./g, '');
+    return t.replace(/,/g, '').replace(/[^\d.]/g, '');
   };
   // one delimiter per row: tab (spreadsheet paste) > semicolon > comma outside quotes ("$10,000" stays whole when tab-separated)
   const delim = (r: string) => (r.includes('\t') ? 'tab' : r.includes(';') ? 'semi' : 'comma');
@@ -181,8 +187,10 @@ export function parseLines(text: string): { hts: string; origin: string; value: 
     .filter(({ c }) => /\d{4}\.?\d{2}/.test(c[0] ?? ''))
     .map(({ d, c }) => {
       const semi = d === 'semi';
-      // unquoted "10,000" in comma-separated text splits into "10" and "000": leave the value empty rather than guess
-      const broken = d === 'comma' && /^\$?\d{1,3}$/.test(c[2] ?? '') && /^\d{3}(\.\d+)?$/.test(c[3] ?? '');
+      // unquoted "$10,000" or "10,000" in comma-separated text splits into "10" and "000": leave the value empty rather
+      // than guess. Only when unmistakable ($ sign, or a "000" group): "100,250" is a value and a quantity.
+      const broken = d === 'comma' && /^\$?\d{1,3}$/.test(c[2] ?? '') && /^\d{3}(\.\d+)?$/.test(c[3] ?? '')
+        && ((c[2] ?? '').startsWith('$') || /^000/.test(c[3] ?? ''));
       // a name ("China") or code ("cn"); unknown text stays empty instead of becoming its first two letters
       return { hts: c[0], origin: resolveCountry(c[1] ?? ''), value: broken ? '' : num(c[2], semi),
         quantity: broken ? '' : num(c[3], semi), quantity2: broken ? '' : num(c[4], semi), claim: (c[5] ?? '').toUpperCase() };

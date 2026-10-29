@@ -174,8 +174,14 @@ def build():
             "groups": [{"id": g["id"], "label": g["id"].replace("_", " "), "codes": g["codes"], "adValorem": g["adValorem15"],
                         "mip": g["mip"]["usd"], "per": g["mip"]["per"], "heading": mip_heading[g["id"]], "onshoring": g["id"] != "modules"}
                        for g in ps["productGroups"]]}
+    # HTS rows, search index and expired headings belong to the HTS revision (update_hts.py). Rebuilding the rules keeps
+    # the published ones unless --with-hts says data/build holds a fresh build_hts.py + shaded_headings.py run.
+    with_hts = "--with-hts" in sys.argv
     shaded_f = ROOT / "data" / "build" / "shaded_headings.json"
-    expired = json.loads(shaded_f.read_text(encoding="utf-8"))["shaded"] if shaded_f.exists() else []
+    if with_hts:
+        expired = json.loads(shaded_f.read_text(encoding="utf-8"))["shaded"] if shaded_f.exists() else []
+    else:
+        expired = json.loads((OUT / "rules.json").read_text(encoding="utf-8"))["expired"]
 
     cot = json.loads((REF / "cotton_fee.json").read_text(encoding="utf-8"))
     cotton = {k: float(v["cents_per_kg"]) for k, v in cot["table"].items()}
@@ -229,12 +235,15 @@ def build():
     }
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "rules.json").write_text(json.dumps(rules, separators=(",", ":")), encoding="utf-8")
-    hts = OUT / "hts"
-    hts.mkdir(exist_ok=True)
-    for f in (ROOT / "data" / "build" / "shards").glob("ch*.json"):
-        shutil.copy(f, hts / f.name)
-    n_leaves = write_search(ROOT / "data" / "build" / "shards", OUT / "search.json")
-    print("search leaves:", n_leaves, round((OUT / "search.json").stat().st_size / 1024), "KB")
+    if with_hts:
+        hts = OUT / "hts"
+        hts.mkdir(exist_ok=True)
+        for f in (ROOT / "data" / "build" / "shards").glob("ch*.json"):
+            shutil.copy(f, hts / f.name)
+        n_leaves = write_search(ROOT / "data" / "build" / "shards", OUT / "search.json")
+        print("search leaves:", n_leaves, round((OUT / "search.json").stat().st_size / 1024), "KB")
+    else:
+        print("HTS rows, search index and expired list kept as published (pass --with-hts to replace them)")
     # PGA flags (display only, loaded lazily by the app): references/pga_flags.json -> data/pga.json
     pga_f = REF / "pga_flags.json"
     if pga_f.exists():

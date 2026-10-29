@@ -67,5 +67,9 @@ def fetch_revisions(years=("2025", "2026"), only=None):
 
 if __name__ == "__main__":
     release = sys.argv[sys.argv.index("--release") + 1] if "--release" in sys.argv else None
+    if release:
+        current = next((r["name"] for r in json.loads(get(f"{API}/releaseList")) if r.get("status") == "current"), None)
+        if release != current:
+            sys.exit(f"--release {release}: the USITC API only serves the current revision ({current}) as JSON")
     fetch_current()
     fetch_revisions(only=release)

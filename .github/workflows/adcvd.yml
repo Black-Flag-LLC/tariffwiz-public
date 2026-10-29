@@ -52,5 +52,7 @@ jobs:
           git commit -qm "AD/CVD order flags refreshed ($month)"
           git push -q --force origin "$branch"
           draft=""; [ "${{ steps.checks.outputs.ok }}" = true ] || draft="--draft"
+          # revocations come a few at a time; more than 5 orders gone at once smells like a parsing gap: review it
+          [ "$(jq '.removed | length' adcvd_report.json)" -le 5 ] || draft="--draft"
           gh pr create $draft --base main --head "$branch" --title "AD/CVD order flags refreshed ($month)" --body-file pr.md
           if [ -z "$draft" ]; then gh pr merge "$branch" --squash --delete-branch && gh workflow run publish.yml; fi

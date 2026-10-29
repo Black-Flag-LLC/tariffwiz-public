@@ -107,6 +107,8 @@ def main():
         txt = a.change_record.read_text(encoding="utf-8", errors="replace").splitlines()
         cr_lines = [t.strip() for t in txt if CH99_LINE.search(t)]
         cr_note = f"{len(txt)} lines, {len(cr_lines)} about Chapter 99"
+        if len([t for t in txt if t.strip()]) < 5:  # the PDF yielded no text (scanned or failed): treat as unreadable
+            a.change_record = None
 
     ch99_rows = [c for c in added + removed if ch99(c)] + [c for c, *_ in rate_chg + desc_chg if ch99(c)]
     reasons = []
@@ -120,6 +122,12 @@ def main():
         reasons.append(f"the Change Record has {len(cr_lines)} line(s) about Chapter 99")
     if not (a.change_record and a.change_record.exists()):
         reasons.append("the Change Record could not be read, so Chapter 99 note changes are unknown")
+    # a new 10-digit line beside a listed 10-digit code: the list may need it too (lists pin exact statistical lines)
+    listed10 = {c.replace(".", "") for codes in rules["lists"].values() for c in codes if len(c.replace(".", "")) == 10}
+    split = sorted(c for c in added if not ch99(c) and len(c.replace(".", "")) == 10
+                   and any(x[:8] == c.replace(".", "")[:8] for x in listed10))
+    if split:
+        reasons.append(f"{len(split)} new statistical line(s) beside listed codes ({', '.join(split[:5])}{'…' if len(split) > 5 else ''})")
     affected = sorted(used & set(ch99_rows))
 
     today = datetime.date.today().isoformat()

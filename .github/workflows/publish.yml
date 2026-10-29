@@ -44,7 +44,7 @@ jobs:
         name: Redeploy the site (only once it is live; the first deploy is part of launch)
         run: |
           # the token has no Pages permission, so ask the site itself: 200 once the first deploy has happened
-          if [ "$(curl -s -o /dev/null -w '%{http_code}' https://black-flag-llc.github.io/tariffwiz-public/)" = 200 ]; then
+          if [ "$(curl -s --retry 3 --retry-all-errors -o /dev/null -w '%{http_code}' https://black-flag-llc.github.io/tariffwiz-public/)" = 200 ]; then
             gh workflow run ci.yml -R Black-Flag-LLC/tariffwiz-public -f deploy=true
           else
             echo "GitHub Pages is not on for the public copy yet (pre-launch): synced, not deployed."

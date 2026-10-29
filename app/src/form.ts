@@ -27,11 +27,11 @@ export const FAMILY: Record<string, { color: string; name: string }> = {
   fee: { color: 'var(--c-fee)', name: 'Fees' },
   tax: { color: 'var(--c-fee)', name: 'Excise tax' },
 };
-export const EXAMPLES = [
-  { label: 'Cotton t-shirts · China', hts: '6109.10.00.12', origin: 'CN', value: '10000', mode: 'ocean' as Mode },
-  { label: 'Wine · Canada', hts: '2204.21.50.40', origin: 'CA', value: '10000', mode: 'truck' as Mode, claim: 'S', quantity: '1000' },
-  { label: 'Steel plate · Germany', hts: '7208.51.00.30', origin: 'DE', value: '100000', mode: 'ocean' as Mode },
-  { label: 'Car · Japan', hts: '8703.23.01.60', origin: 'JP', value: '40000', mode: 'ocean' as Mode },
+export const EXAMPLES: { label: string; hts: string; origin: string; value: string; mode: Mode; claim?: string; quantity?: string }[] = [
+  { label: 'Cotton t-shirts · China', hts: '6109.10.00.12', origin: 'CN', value: '10000', mode: 'ocean' },
+  { label: 'Wine · France', hts: '2204.21.50.40', origin: 'FR', value: '10000', mode: 'ocean' as Mode, quantity: '1000' },
+  { label: 'Steel plate · Germany', hts: '7208.51.00.30', origin: 'DE', value: '100000', mode: 'ocean' },
+  { label: 'Car · Japan', hts: '8703.23.01.60', origin: 'JP', value: '40000', mode: 'ocean' },
 ];
 
 export interface Form { hts: string; origin: string; value: string; entryDate: string; loadingDate: string; mode: Mode;
