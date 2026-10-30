@@ -1,11 +1,11 @@
 name: tariff-watch
-# Daily: new HTS revision, Federal Register notices (incl. public inspection) and CBP CSMS messages -> one "Tariff watch"
+# Every 6 hours: new HTS revision, Federal Register notices (incl. public inspection) and CBP CSMS messages -> one "Tariff watch"
 # issue (new items only), and the site's status banner (app/public/data/status.json: published actions not yet reviewed),
 # redeployed whenever it changes. A new HTS revision starts the update job: rebuild the data, run tests + heading audit +
 # Census check, open a pull request. When nothing in Chapter 99 moved and every check passes it merges and goes live by
 # itself; otherwise it stays a draft ("rule work needed") and the banner tells users what isn't in the results yet.
 on:
-  schedule: [{ cron: '17 12 * * *' }]   # daily, 12:17 UTC
+  schedule: [{ cron: '17 0,6,12,18 * * *' }]   # every 6 hours (00:17, 06:17, 12:17, 18:17 UTC); the auto-review task runs after
   workflow_dispatch:
     inputs:
       release:
