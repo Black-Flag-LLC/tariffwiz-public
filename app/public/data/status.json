@@ -1,35 +1,10 @@
 {
- "rulesChecked": "2026-10-29",
- "revision": "2026HTSRev21",
+ "rulesChecked": "2026-10-30",
+ "revision": "2026HTSRev22",
  "latestRevision": {
   "name": "2026HTSRev22",
   "title": "Revision 22 (2026)",
   "from": "10/30/2026"
  },
- "pending": [
-  {
-   "doc": "2026-22230",
-   "title": "Foreign-Trade Zone (FTZ) 31, Notification of Proposed Production Activity; World Wide Technology; (Networking Racks); Edwardsville, Illinois",
-   "type": "Notice",
-   "date": "2026-10-30",
-   "url": "https://www.federalregister.gov/documents/2026/10/30/2026-22230/foreign-trade-zone-ftz-31-notification-of-proposed-production-activity-world-wide-technology",
-   "inspection": false
-  },
-  {
-   "doc": "2026-22231",
-   "title": "Foreign-Trade Zone (FTZ) 38, Notification of Proposed Production Activity; ElringKlinger South Carolina, LLC; (Automotive Battery Subassemblies); Easley, South Carolina",
-   "type": "Notice",
-   "date": "2026-10-30",
-   "url": "https://www.federalregister.gov/documents/2026/10/30/2026-22231/foreign-trade-zone-ftz-38-notification-of-proposed-production-activity-elringklinger-south-carolina",
-   "inspection": false
-  },
-  {
-   "doc": "2026-22385",
-   "title": "Robotics, Industrial Machinery, and Their Parts and Components, Imports Into U.S.; Adjustment (Proc. 11077)",
-   "type": "Presidential Document",
-   "date": "2026-11-02",
-   "url": "https://www.federalregister.gov/public-inspection/2026-22385/robotics-industrial-machinery-and-their-parts-and-components-imports-into-us-adjustment-proc-11077",
-   "inspection": true
-  }
- ]
+ "pending": []
 }

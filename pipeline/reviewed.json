@@ -1,7 +1,30 @@
 {
  "_about": "Federal Register documents already reviewed against the rules. The site's status banner lists every tariff action published since rules.json meta.checked that is not here. Add one with: python -I pipeline/mark_reviewed.py DOC \"what it does / what was encoded\"",
  "reviewed": [
-  {"doc": "2026-22049", "date": "2026-10-29", "note": "Proclamation 11074 (Section 232 wind turbines): orders negotiations only; clause (4) changes no tariff."},
-  {"doc": "2026-22292", "date": "2026-10-29", "note": "Proclamation 11076: note 51(b)(3) list change from 2026-10-30, encoded as listChanges (references/canada_note51_changes.json)."}
+  {
+   "doc": "2026-22049",
+   "date": "2026-10-29",
+   "note": "Proclamation 11074 (Section 232 wind turbines): orders negotiations only; clause (4) changes no tariff."
+  },
+  {
+   "doc": "2026-22292",
+   "date": "2026-10-29",
+   "note": "Proclamation 11076: note 51(b)(3) list change from 2026-10-30, encoded as listChanges (references/canada_note51_changes.json)."
+  },
+  {
+   "doc": "2026-22385",
+   "date": "2026-10-30",
+   "note": "Proclamation 11077 (Section 232 robotics, industrial machinery and parts, signed 2026-10-28, publishes 2026-11-02): orders negotiations and a 180-day update only; clauses (1)-(4) impose no duty and do not modify the HTSUS. Nothing to encode."
+  },
+  {
+   "doc": "2026-22230",
+   "date": "2026-10-30",
+   "note": "FTZ 31 notice of proposed production activity (World Wide Technology, networking racks): FTZ board notice, no change to any duty rate. Nothing to encode."
+  },
+  {
+   "doc": "2026-22231",
+   "date": "2026-10-30",
+   "note": "FTZ 38 notice of proposed production activity (ElringKlinger, battery subassemblies): FTZ board notice, no change to any duty rate. Nothing to encode."
+  }
  ]
 }
