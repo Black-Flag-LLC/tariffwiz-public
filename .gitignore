@@ -1,5 +1,5 @@
 # pipeline working files (fetched sources, intermediates, Census downloads); never committed
-data/
+/data/
 # files the workflows write at the repo root
 seen.txt
 watch.json
