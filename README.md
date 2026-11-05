@@ -53,13 +53,41 @@ Everything runs from this repository's GitHub Actions; there is no other copy.
   `tariff-update/<revision>` branch and opens an issue saying what needs rule work.
 - **Monthly:** AD/CVD order flags are refreshed from the Federal Register (3rd), and the Census check re-runs on the
   newest month and opens an issue if accuracy drops (12th).
+- **Daily review (`tariff-watch`, after the watch):** Claude reads the verbatim text of each Federal Register action on
+  the banner (instructions: `.github/review/prompt.md`). An action that changes no duty is recorded in
+  `pipeline/reviewed.json` and goes live. One that changes a duty is encoded on a `review/<document>` branch, tested,
+  and left for a person with an issue; so is anything Claude cannot settle. Once nothing is left unreviewed, the
+  "rules checked" date moves to today.
 - **Every push to `main`:** CI (lint, typecheck, tests, filing audit) and, when it passes, a GitHub Pages deploy.
+- **Monthly (Dependabot):** grouped pull requests for the pinned GitHub Actions and the app's npm packages.
 
-Reviewing a Federal Register action (it leaves the banner):
+### Settings
+
+| Where | Name | What it does |
+|---|---|---|
+| Secret | `ANTHROPIC_API_KEY` | Turns the daily review on. Without it the banner keeps listing actions until reviewed by hand. |
+| Variable | `REVIEW_MODEL` | Model for the review (default `claude-opus-5-5`). |
+| Variable | `REVIEW_BUDGET_USD` | Spending cap per document (default `3`). |
+| Variable | `REVIEW_MAX_DOCS` | Documents reviewed per day (default `6`); the rest wait for the next run. |
+
+Set them under Settings → Secrets and variables → Actions, or with `gh secret set` / `gh variable set`.
+
+### By hand
+
+Record a review yourself (the action leaves the banner):
 
 ```bash
 python -I pipeline/mark_reviewed.py 2026-12345 "what it does / what was encoded"
 ```
+
+Test the review on one document without publishing anything (the result is in the run summary):
+
+```bash
+gh workflow run watch.yml -f review_doc=2026-12345
+```
+
+Taking a held change live: open a pull request from its `review/…` or `tariff-update/…` branch, check it, and merge;
+the push to `main` deploys it. Deleting a `review/…` branch instead lets the next daily run review that action again.
 
 ## Sources
 

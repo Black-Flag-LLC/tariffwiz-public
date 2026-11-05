@@ -27,6 +27,7 @@ concurrency: { group: tariff-watch, cancel-in-progress: false }
 jobs:
   watch:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions: { contents: write, issues: write, actions: write }
     outputs:
       new_revision: ${{ steps.w.outputs.new_revision }}

@@ -1,0 +1,14 @@
+# Keeps the SHA-pinned actions (this repo requires pinning) and the app's npm packages current. One grouped pull request
+# per ecosystem per month; CI (tests, heading audit, build) runs on each before anything is merged.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }
+    groups: { actions: { patterns: ['*'] } }
+  - package-ecosystem: npm
+    directory: /app
+    schedule: { interval: monthly }
+    groups:
+      minor-and-patch: { update-types: [minor, patch] }
+    open-pull-requests-limit: 5

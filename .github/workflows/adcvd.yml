@@ -11,7 +11,7 @@ concurrency: { group: adcvd-refresh, cancel-in-progress: false }
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120   # ~1,750 Federal Register calls; rate-limit waits (429) can add a lot
     permissions: { contents: write, pull-requests: write, issues: write, actions: write }
     env:
       GH_TOKEN: ${{ github.token }}

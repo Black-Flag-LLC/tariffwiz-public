@@ -96,17 +96,22 @@ class FR:
         if os.path.exists(path):
             with open(path, "rb") as f:
                 return f.read()
-        for attempt in range(5):
+        for attempt in range(8):
             try:
                 req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Encoding": "identity"})
                 with urllib.request.urlopen(req, timeout=60) as r:
                     data = r.read()
                 break
             except Exception as e:  # noqa: BLE001 - network retry
-                if attempt == 4:
+                if attempt == 7:
                     raise
-                time.sleep(2 + attempt * 3)
-                print(f"  retry {url[:90]} ({e})", file=sys.stderr)
+                wait = 2 + attempt * 3
+                if isinstance(e, urllib.error.HTTPError) and e.code == 429:  # rate limited: wait it out, slow down after
+                    ra = e.headers.get("Retry-After", "")
+                    wait = int(ra) if ra.isdigit() else min(60 * (attempt + 1), 300)
+                    self.delay = max(self.delay, 1.0)
+                print(f"  retry in {wait}s {url[:90]} ({e})", file=sys.stderr)
+                time.sleep(wait)
         self.calls += 1
         time.sleep(self.delay)
         with open(path, "wb") as f:
