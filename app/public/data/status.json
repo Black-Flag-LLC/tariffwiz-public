@@ -6,38 +6,5 @@
   "title": "Revision 22 (2026)",
   "from": "10/30/2026"
  },
- "pending": [
-  {
-   "doc": "2026-22698",
-   "title": "Application for Duty Free Entry of Scientific Instruments: Northwestern University and Cornell University et al.",
-   "type": "Notice",
-   "date": "2026-11-06",
-   "url": "https://www.federalregister.gov/public-inspection/2026-22698/application-for-duty-free-entry-of-scientific-instruments-northwestern-university-and-cornell",
-   "inspection": true
-  },
-  {
-   "doc": "2026-22700",
-   "title": "Application for Duty Free Entry of Scientific Instruments: Oakland University, et al.",
-   "type": "Notice",
-   "date": "2026-11-06",
-   "url": "https://www.federalregister.gov/public-inspection/2026-22700/application-for-duty-free-entry-of-scientific-instruments-oakland-university-et-al",
-   "inspection": true
-  },
-  {
-   "doc": "2026-22725",
-   "title": "Agency Information Collection Activities; Proposals, Submissions, and Approvals: Section 232 National Security Adjustments to Imports of Specialty Pharmaceuticals and Associated Ingredients",
-   "type": "Notice",
-   "date": "2026-11-06",
-   "url": "https://www.federalregister.gov/public-inspection/2026-22725/agency-information-collection-activities-proposals-submissions-and-approvals-section-232-national",
-   "inspection": true
-  },
-  {
-   "doc": "2026-22726",
-   "title": "Agency Information Collection Activities; Proposals, Submissions, and Approvals: Application Process to Waive the Import Qualification Criteria Measures to Restrict Stockpiling of Polysilicon and Polysilicon Derivatives",
-   "type": "Notice",
-   "date": "2026-11-06",
-   "url": "https://www.federalregister.gov/public-inspection/2026-22726/agency-information-collection-activities-proposals-submissions-and-approvals-application-process-to",
-   "inspection": true
-  }
- ]
+ "pending": []
 }
