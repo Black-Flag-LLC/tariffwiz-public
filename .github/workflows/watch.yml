@@ -17,6 +17,10 @@ on:
         description: With a release, run every step and show the result, but push nothing
         type: boolean
         default: false
+      review_doc:
+        description: Test the review job on this Federal Register document (e.g. 2026-22385), even if already reviewed; publishes nothing
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency: { group: tariff-watch, cancel-in-progress: false }
@@ -190,11 +194,18 @@ jobs:
       - id: todo
         if: env.HAS_KEY == 'true'
         name: Pick the actions to review (skip those already held on a review/ branch)
+        env: { TEST_DOC: '${{ inputs.review_doc }}' }
         run: |
           mkdir -p data/build/review
           git ls-remote --heads "https://github.com/${{ github.repository }}" 'review/*' | sed 's#.*refs/heads/review/##' > data/build/review/held.txt
           jq -r '.pending[].doc' app/public/data/status.json | tr -d '\r' | grep -E '^[0-9]{4}-[0-9]+$' \
             | grep -vxF -f data/build/review/held.txt | head -n "$MAX_DOCS" > data/build/review/todo.txt || true
+          if [ -n "$TEST_DOC" ]; then   # test run: just this document, as if unreviewed (nothing is published)
+            echo "$TEST_DOC" | grep -E '^[0-9]{4}-[0-9]+$' > data/build/review/todo.txt || { echo "::error::bad document number"; exit 1; }
+            jq --arg d "$TEST_DOC" '.reviewed |= map(select(.doc != $d))' pipeline/reviewed.json > data/build/review/r.json
+            mv data/build/review/r.json pipeline/reviewed.json
+            git -c user.name=test -c user.email=test@example.invalid commit -qam "test: treat $TEST_DOC as unreviewed"   # local only
+          fi
           echo "count=$(wc -l < data/build/review/todo.txt)" >> "$GITHUB_OUTPUT"
           echo "To review:"; cat data/build/review/todo.txt
       - if: steps.todo.outputs.count > 0
@@ -235,6 +246,7 @@ jobs:
             [ -n "$doc" ] || continue
             git checkout -q main
             jq --arg d "$doc" '.pending[] | select(.doc == $d)' app/public/data/status.json > "$R/item.json"
+            [ -s "$R/item.json" ] || jq -n --arg d "$doc" '{doc: $d, note: "test run: not on the banner"}' > "$R/item.json"
             fulltext "$doc" || echo "::warning::no full text for $doc"
             rules pretty
             sed "s/{{DOC}}/$doc/g" .github/review/prompt.md > "$R/prompt.txt"
@@ -276,7 +288,15 @@ jobs:
               git checkout -q main
             fi
           done < "$R/todo.txt"
-      - if: steps.todo.outputs.count > 0
+      - if: steps.todo.outputs.count > 0 && inputs.review_doc != ''
+        name: Test run result (nothing published)
+        run: |
+          R=data/build/review; d="${{ inputs.review_doc }}"
+          { echo "## Review test: $d"; echo; echo "Full text fetched: $([ -s "$R/$d.txt" ] && echo "yes, $(wc -c < "$R/$d.txt") bytes" || echo no)"; echo
+            echo '```json'; cat "$R/$d.json" 2>/dev/null || echo "no decision file"; echo '```'; echo
+            echo "Would go: $(grep -qx "$d" "$R/live.txt" && echo "live (main)" || echo "held: $(grep "^$d " "$R/held_new.txt" | cut -d' ' -f2-)")"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - if: steps.todo.outputs.count > 0 && inputs.review_doc == ''
         name: Publish the reviews
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
