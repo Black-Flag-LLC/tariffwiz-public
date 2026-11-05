@@ -136,8 +136,8 @@ def main():
           f"Change Record: {cr_note}.", ""]
     if reasons:
         md += ["### ⚠️ Rule work needed before merging", "",
-               "Chapter 99 rules are written from the note text by hand (us-import-duty skill, \"New HTS revision\"). "
-               "This pull request is a draft until that is done. Why:", ""] + [f"- {r}" for r in reasons] + [""]
+               "Chapter 99 rules are written from the note text by hand (edit app/public/data/rules.json, then "
+               "pipeline/mark_reviewed.py). This update is held until that is done. Why:", ""] + [f"- {r}" for r in reasons] + [""]
         if affected:
             md += ["Headings the engine uses that changed: " + ", ".join(affected), ""]
     else:

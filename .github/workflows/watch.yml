@@ -1,11 +1,12 @@
 name: tariff-watch
-# Every 6 hours: new HTS revision, Federal Register notices (incl. public inspection) and CBP CSMS messages -> one "Tariff watch"
+# Daily: new HTS revision, Federal Register notices (incl. public inspection) and CBP CSMS messages -> one "Tariff watch"
 # issue (new items only), and the site's status banner (app/public/data/status.json: published actions not yet reviewed),
 # redeployed whenever it changes. A new HTS revision starts the update job: rebuild the data, run tests + heading audit +
-# Census check, open a pull request. When nothing in Chapter 99 moved and every check passes it merges and goes live by
-# itself; otherwise it stays a draft ("rule work needed") and the banner tells users what isn't in the results yet.
+# Census check. When nothing in Chapter 99 moved and every check passes it is committed to main and goes live by itself;
+# otherwise it waits on a branch (tariff-update/REV) with an issue saying what needs a person ("rule work needed"), and
+# the banner tells users what isn't in the results yet.
 on:
-  schedule: [{ cron: '17 0,6,12,18 * * *' }]   # every 6 hours (00:17, 06:17, 12:17, 18:17 UTC); the auto-review task runs after
+  schedule: [{ cron: '17 14 * * *' }]   # daily 14:17 UTC: after the Federal Register's 06:00 ET issue and 08:45 ET public inspection
   workflow_dispatch:
     inputs:
       release:
@@ -13,7 +14,7 @@ on:
         type: string
         default: ''
       dry_run:
-        description: With a release, run every step and show the pull request text, but push nothing
+        description: With a release, run every step and show the result, but push nothing
         type: boolean
         default: false
 permissions:
@@ -21,7 +22,6 @@ permissions:
 concurrency: { group: tariff-watch, cancel-in-progress: false }
 jobs:
   watch:
-    if: github.repository == 'Black-Flag-LLC/tariffwiz'   # the public copy gets this file too; only the source repo watches
     runs-on: ubuntu-latest
     permissions: { contents: write, issues: write, actions: write }
     outputs:
@@ -30,6 +30,13 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with: { python-version: '3.11' }
+      - name: Keep the scheduled workflows on
+        # GitHub turns off schedules in a public repo after 60 days with no activity; quiet months are normal here
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          for w in watch.yml adcvd.yml census.yml; do
+            gh api -X PUT "repos/${{ github.repository }}/actions/workflows/$w/enable" || echo "::warning::could not re-enable $w"
+          done
       - name: Collect what earlier watch issues already reported
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
@@ -61,11 +68,11 @@ jobs:
           git add app/public/data/status.json
           git commit -qm "Status: $(jq '.pending | length' app/public/data/status.json) unreviewed tariff action(s)"
           git pull -q --rebase origin main && git push -q origin HEAD:main
-          gh workflow run publish.yml   # a GITHUB_TOKEN push does not trigger the publish workflow by itself
+          gh workflow run ci.yml -f deploy=true   # a GITHUB_TOKEN push does not trigger ci by itself
 
   update:
     needs: watch
-    if: needs.watch.outputs.new_revision != '' || inputs.release != ''
+    if: needs.watch.outputs.new_revision != '' || (inputs.release || '') != ''
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions: { contents: write, pull-requests: write, issues: write, actions: write }
@@ -74,11 +81,12 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { ref: main }   # the watch job may just have pushed a status commit
       - id: seen
         name: Skip a revision that already has an update branch (unless run by hand)
         run: |
           if [ -z "${{ inputs.release }}" ] && git ls-remote --exit-code --heads origin "tariff-update/$REL" >/dev/null; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"; echo "tariff-update/$REL already exists; nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"; echo "tariff-update/$REL already exists and waits for review; nothing to do."
           fi
       - if: steps.seen.outputs.skip != 'true'
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -101,6 +109,8 @@ jobs:
             --change-record data/build/change_record.txt --apply
           echo "changed=$(jq -r .changed data/build/update_status.json)" >> "$GITHUB_OUTPUT"
           echo "rules=$(jq -r .needs_rule_work data/build/update_status.json)" >> "$GITHUB_OUTPUT"
+          # the banner names the revision the data is built from: refresh it with the new one (best effort; the next watch does it too)
+          python -I pipeline/watch.py --json /dev/null --status app/public/data/status.json > /dev/null || true
       - id: checks
         if: steps.build.outputs.changed == 'true' || (inputs.dry_run && steps.build.outputs.changed != '')
         name: Tests, heading audit and Census check on the new data
@@ -128,29 +138,151 @@ jobs:
           cat ../data/build/checks.md
           if [ "$ok" != true ]; then { echo; echo "Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"; } >> ../data/build/checks.md; fi
       - if: steps.build.outputs.changed == 'true' || (inputs.dry_run && steps.build.outputs.changed != '')
-        name: Open the pull request
+        name: Go live, or hold for review
         run: |
-          draft=""; title="HTS $REL: automatic data update"
-          if [ "${{ steps.build.outputs.rules }}" = true ]; then draft="--draft"; title="$title (rule work needed)"; fi
-          if [ "${{ steps.checks.outputs.ok }}" != true ]; then draft="--draft"; title="$title (checks failed)"; fi
-          { cat data/build/update_report.md; echo; cat data/build/checks.md; echo
-            echo "---"; echo "Opened by the tariff-watch workflow. Merging puts this data live (publish workflow)."; } > pr.md
+          hold=""; title="HTS $REL: automatic data update"
+          if [ "${{ steps.build.outputs.rules }}" = true ]; then hold=1; title="$title (rule work needed)"; fi
+          if [ "${{ steps.checks.outputs.ok }}" != true ]; then hold=1; title="$title (checks failed)"; fi
+          { cat data/build/update_report.md; echo; cat data/build/checks.md; echo; echo "---"; } > pr.md
           if [ "${{ inputs.dry_run }}" = true ]; then { echo "# Dry run: $title"; cat pr.md; } >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
           git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "tariff-update/$REL"
           git add app/public/data
           git commit -qm "HTS $REL: automatic data update" -m "$(jq -r '.reasons | join("; ")' data/build/update_status.json)"
-          git push -q --force origin "tariff-update/$REL"
-          if gh pr create $draft --base main --head "tariff-update/$REL" --title "$title" --body-file pr.md; then
+          if [ -z "$hold" ]; then
             # nothing in Chapter 99 moved and every check passed: take it live without waiting for a person
-            if [ -z "$draft" ]; then
-              gh pr merge "tariff-update/$REL" --squash --delete-branch && gh workflow run publish.yml
-            fi
-          else
+            git pull -q --rebase origin main && git push -q origin HEAD:main
+            gh workflow run ci.yml -f deploy=true
+            { echo "# $title: live"; cat pr.md; } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git push -q --force origin "HEAD:refs/heads/tariff-update/$REL"
+          echo "Opened by the tariff-watch workflow. Merging puts this data live (the ci workflow deploys main)." >> pr.md
+          if ! gh pr create --draft --base main --head "tariff-update/$REL" --title "$title" --body-file pr.md; then
             # Settings > Actions > General > "Allow GitHub Actions to create and approve pull requests" is off
-            echo "Branch pushed but no pull request could be opened. Open it here: ${{ github.server_url }}/${{ github.repository }}/compare/main...tariff-update/$REL" > note.md
-            echo >> note.md; cat pr.md >> note.md
-            gh issue create --title "$title: open the pull request" --body-file note.md
+            { echo "The data is on branch tariff-update/$REL. Open the pull request here:"
+              echo "${{ github.server_url }}/${{ github.repository }}/compare/main...tariff-update/$REL"; echo; cat pr.md; } > note.md
+            gh issue create --title "$title" --body-file note.md
           fi
       - if: steps.build.outputs.changed == 'false' && !inputs.dry_run
-        run: echo "The rebuilt data equals what is in main; no pull request needed."
+        run: echo "The rebuilt data equals what is in main; nothing to do."
+
+  review:
+    # Claude reads each unreviewed Federal Register action on the banner (.github/review/prompt.md). "No change to any duty"
+    # is recorded in pipeline/reviewed.json and goes live; an encoded rule change, or one it cannot settle, waits on a
+    # review/DOC branch with an issue for a person. Once nothing is left unreviewed, rules.json meta.checked moves to today.
+    # Needs the secret ANTHROPIC_API_KEY; without it the banner simply keeps listing the actions.
+    needs: [watch, update]
+    if: always() && needs.watch.result == 'success' && !inputs.dry_run
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions: { contents: write, issues: write, pull-requests: write, actions: write }
+    env:
+      HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+      MODEL: ${{ vars.REVIEW_MODEL || 'claude-opus-5-5' }}
+      BUDGET: ${{ vars.REVIEW_BUDGET_USD || '3' }}     # per document, US dollars
+      MAX_DOCS: ${{ vars.REVIEW_MAX_DOCS || '6' }}     # per run; the rest wait for tomorrow
+    steps:
+      - if: env.HAS_KEY != 'true'
+        run: echo "::notice::ANTHROPIC_API_KEY is not set, so nothing was reviewed. Review by hand with pipeline/mark_reviewed.py."
+      - if: env.HAS_KEY == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { ref: main, persist-credentials: false }   # no git credentials while Claude runs
+      - id: todo
+        if: env.HAS_KEY == 'true'
+        name: Pick the actions to review (skip those already held on a review/ branch)
+        run: |
+          mkdir -p data/build/review
+          git ls-remote --heads "https://github.com/${{ github.repository }}" 'review/*' | sed 's#.*refs/heads/review/##' > data/build/review/held.txt
+          jq -r '.pending[].doc' app/public/data/status.json | grep -vxF -f data/build/review/held.txt | head -n "$MAX_DOCS" > data/build/review/todo.txt || true
+          echo "count=$(wc -l < data/build/review/todo.txt)" >> "$GITHUB_OUTPUT"
+          echo "To review:"; cat data/build/review/todo.txt
+      - if: steps.todo.outputs.count > 0
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - if: steps.todo.outputs.count > 0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - if: steps.todo.outputs.count > 0
+        name: Review each action with Claude
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          NO_COLOR: '1'
+        run: |
+          npm ci --prefix app --no-audit --no-fund > /dev/null
+          npm install -g --no-audit --no-fund @anthropic-ai/claude-code@2.1.317 > /dev/null
+          git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          R=data/build/review; RULES=app/public/data/rules.json
+          rules() {  # pretty for editing, compact (the pipeline's exact format) for commits
+            python -I -c "import json,sys; p=sys.argv[2]; r=json.load(open(p,encoding='utf-8')); open(p,'w',encoding='utf-8').write(json.dumps(r,indent=1,ensure_ascii=False) if sys.argv[1]=='pretty' else json.dumps(r,separators=(',',':')))" "$1" "$RULES"
+          }
+          : > "$R/live.txt"; : > "$R/held_new.txt"
+          while read -r doc; do
+            [ -n "$doc" ] || continue
+            git checkout -q main
+            jq --arg d "$doc" '.pending[] | select(.doc == $d)' app/public/data/status.json > "$R/item.json"
+            rules pretty
+            sed "s/{{DOC}}/$doc/g" .github/review/prompt.md > "$R/prompt.txt"
+            echo "::group::Claude on $doc"
+            claude -p "$(cat "$R/prompt.txt")" --model "$MODEL" --max-budget-usd "$BUDGET" --permission-mode dontAsk \
+              --tools Read Edit Write Glob Grep Bash WebFetch \
+              --allowedTools Read Edit Write Glob Grep \
+                "Bash(python -I pipeline/mark_reviewed.py:*)" "Bash(npm --prefix app test:*)" \
+                "Bash(npm --prefix app run audit:headings:*)" "Bash(npm --prefix app run quote:*)" \
+                "WebFetch(domain:www.federalregister.gov)" "WebFetch(domain:public-inspection.federalregister.gov)" \
+                "WebFetch(domain:www.govinfo.gov)" "WebFetch(domain:hts.usitc.gov)" \
+              < /dev/null 2>&1 | tee "$R/$doc.log" || true
+            echo "::endgroup::"
+            decision=$(jq -r '.decision // empty' "$R/$doc.json" 2>/dev/null); summary=$(jq -r '.summary // empty' "$R/$doc.json" 2>/dev/null)
+            [ -n "$decision" ] || { decision=needs_person; summary="The review did not finish with a decision (see the workflow log)."; }
+            if ! rules compact; then git checkout -q -- "$RULES"; decision=needs_person; summary="$summary (rules.json was left invalid; edit discarded)"; fi
+            others=$(git status --porcelain | grep -v ' pipeline/reviewed.json$' || true)
+            recorded=$(jq --arg d "$doc" 'any(.reviewed[]; .doc == $d)' pipeline/reviewed.json)
+            if [ "$decision" = no_change ] && [ -z "$others" ] && [ "$recorded" = true ]; then
+              git add pipeline/reviewed.json
+              git commit -qm "Review $doc: no duty change" -m "$summary"
+              echo "$doc" >> "$R/live.txt"
+            else
+              [ "$decision" != no_change ] || { decision=needs_person; summary="$summary (said no change but did not record only that)"; }
+              git checkout -q -b "review/$doc"
+              { echo "decision: $decision"; echo; echo "$summary"; } > "$R/$doc.md"
+              if [ -n "$others" ]; then
+                { echo; echo "### Checks on this branch"; echo; echo '```'
+                  npm --prefix app test 2>&1 | grep -E 'Tests +[0-9]|FAIL' | tail -n 5 || true
+                  npm --prefix app run audit:headings 2>&1 | grep -E 'violation shapes' | tail -n 1 || true
+                  echo '```'; } >> "$R/$doc.md"
+              fi
+              git add -A
+              git commit -q --allow-empty -m "Review $doc: $decision" -m "$summary"
+              echo "$doc $decision" >> "$R/held_new.txt"
+              git checkout -q main
+            fi
+          done < "$R/todo.txt"
+      - if: steps.todo.outputs.count > 0
+        name: Publish the reviews
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          R=data/build/review
+          gh auth setup-git
+          # the banner and meta.checked: once nothing published since the check date is unreviewed, move the date
+          python -I pipeline/watch.py --json /dev/null --status app/public/data/status.json > /dev/null || true
+          if [ "$(jq '.pending | length' app/public/data/status.json)" = 0 ]; then
+            python -I pipeline/mark_reviewed.py --checked
+            python -I pipeline/watch.py --json /dev/null --status app/public/data/status.json > /dev/null || true
+          fi
+          git add app/public/data/status.json app/public/data/rules.json
+          git diff --cached --quiet || git commit -qm "Status: $(jq '.pending | length' app/public/data/status.json) unreviewed tariff action(s)"
+          if [ "$(git rev-list --count origin/main..main)" -gt 0 ]; then
+            git pull -q --rebase origin main && git push -q origin HEAD:main
+            gh workflow run ci.yml -f deploy=true
+          fi
+          while read -r doc decision; do
+            [ -n "$doc" ] || continue
+            git push -q --force origin "review/$doc"
+            title="Review $doc: $decision"
+            { cat "$R/$doc.md"; echo; echo "Federal Register: $(jq -r --arg d "$doc" '.pending[] | select(.doc == $d) | .url' app/public/data/status.json)"
+              echo; echo "Branch: [review/$doc](${{ github.server_url }}/${{ github.repository }}/compare/main...review/$doc). Merging it records the review"
+              echo "(and any encoded rule change) and takes it live. Deleting the branch lets the next daily run review it again."
+              echo; echo "Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"; } > "$R/$doc.issue.md"
+            gh issue create --title "$title" --body-file "$R/$doc.issue.md"
+          done < "$R/held_new.txt"
+          { echo "## Reviews"; echo; echo "Live: $(paste -sd ' ' "$R/live.txt")"; echo; echo "Held: $(cut -d' ' -f1 "$R/held_new.txt" | paste -sd ' ')"; } >> "$GITHUB_STEP_SUMMARY"

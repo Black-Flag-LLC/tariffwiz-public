@@ -13,7 +13,6 @@ permissions:
   contents: read
 jobs:
   census:
-    if: github.repository == 'Black-Flag-LLC/tariffwiz'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions: { contents: read, issues: write }

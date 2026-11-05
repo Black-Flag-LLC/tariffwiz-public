@@ -2,7 +2,7 @@
 
   python -I pipeline/update_adcvd.py [--max-docs N] [--status OUT.json]
 
-Runs build_adcvd.py into references/adcvd.json, then rewrites only rules.json "adcvd" (same transform as build_rules.py,
+Runs build_adcvd.py into data/build/adcvd.json, then rewrites only rules.json "adcvd" (same transform as build_rules.py,
 via adcvd_rules.py). Prints and writes what changed (orders added / revoked). The flags only say "an order may apply";
 deposit rates are always the importer's to enter, so a refresh can go live once tests and the heading audit pass.
 """
@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # python -I leaves the
 from adcvd_rules import adcvd_rules  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
-REF = ROOT / ".claude" / "skills" / "us-import-duty" / "references" / "adcvd.json"
+REF = ROOT / "data" / "build" / "adcvd.json"
 RULES = ROOT / "app" / "public" / "data" / "rules.json"
 
 

@@ -1,4 +1,7 @@
 name: ci
+# Lint, typecheck, golden tests and the heading audit gate every build; a build of main that passes goes live on
+# GitHub Pages. The data jobs (watch, adcvd-refresh) push with GITHUB_TOKEN, which does not fire `push`, so they start
+# this workflow with `gh workflow run ci.yml -f deploy=true` after they commit.
 on:
   push:
     branches: [main]
@@ -6,9 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       deploy:
-        description: Deploy to GitHub Pages (needs the repo public with Pages on)
+        description: Deploy main to GitHub Pages after the checks pass
         type: boolean
-        default: false
+        default: true
 permissions:
   contents: read
 jobs:
@@ -35,9 +38,10 @@ jobs:
       - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4 (pins its own upload-artifact by SHA)
         with: { path: app/dist }
   deploy:
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy
-    needs: test-build
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.deploy)
+    needs: [lint-python, test-build]
     runs-on: ubuntu-latest
+    concurrency: { group: pages, cancel-in-progress: false }
     permissions:
       pages: write
       id-token: write

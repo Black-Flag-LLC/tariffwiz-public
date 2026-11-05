@@ -21,7 +21,7 @@ other charges. Everything runs in the browser; nothing you type leaves your devi
 | `app/public/data/` | Data the site loads: HTS rows per chapter, `rules.json` (every Chapter 99 measure as data), search index. |
 | `app/scripts/` | Command-line tools on the same engine: `quote`, the filing audit, the Census validation. |
 | `pipeline/` | Python (standard library) that builds the data from USITC, Federal Register and CBP sources, and watches them. |
-| `.github/workflows/` | CI, the daily tariff watch and update job, the monthly Census check, publishing. |
+| `.github/workflows/` | CI + Pages deploy, the daily tariff watch and update job, the monthly AD/CVD refresh and Census check. |
 
 ## Run it on your own computer
 
@@ -42,12 +42,24 @@ npm --prefix app run quote --silent -- --hts 8708.29.51.90 --from PL --value 100
 
 ## How the data stays current
 
-- **Daily:** a GitHub Actions job checks USITC for a new HTS revision, the Federal Register for tariff proclamations
-  and notices, and CBP CSMS messages, and posts new items to an issue.
-- **New HTS revision:** the job rebuilds the data, runs the golden tests, the filing audit and a check against the
-  duties CBP actually collected (Census import data), then opens a pull request listing every change. Chapter 99
-  rule changes are reviewed by hand before merging; nothing goes live until the pull request is merged.
-- **Monthly:** the Census check re-runs on the newest month and opens an issue if accuracy drops.
+Everything runs from this repository's GitHub Actions; there is no other copy.
+
+- **Daily (`tariff-watch`, 14:17 UTC):** checks USITC for a new HTS revision, the Federal Register (published and on
+  public inspection) for tariff proclamations and notices, and CBP CSMS messages. New items go to a "Tariff watch"
+  issue, and any published action not yet reviewed shows in a banner above every result on the site.
+- **New HTS revision:** the same job rebuilds the data and runs the golden tests, the filing audit and a check against
+  the duties CBP actually collected (Census import data). When no Chapter 99 row, note or list moved and every check
+  passes, it commits to `main` and the site redeploys by itself. Otherwise it holds the data on a
+  `tariff-update/<revision>` branch and opens an issue saying what needs rule work.
+- **Monthly:** AD/CVD order flags are refreshed from the Federal Register (3rd), and the Census check re-runs on the
+  newest month and opens an issue if accuracy drops (12th).
+- **Every push to `main`:** CI (lint, typecheck, tests, filing audit) and, when it passes, a GitHub Pages deploy.
+
+Reviewing a Federal Register action (it leaves the banner):
+
+```bash
+python -I pipeline/mark_reviewed.py 2026-12345 "what it does / what was encoded"
+```
 
 ## Sources
 

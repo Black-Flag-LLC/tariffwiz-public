@@ -1,6 +1,7 @@
 name: adcvd-refresh
 # Monthly: rebuild the AD/CVD order flags from the Federal Register (pipeline/update_adcvd.py). When orders changed and
-# the tests and heading audit pass, it merges and goes live by itself; otherwise the pull request waits for review.
+# the tests and heading audit pass, it is committed to main and goes live by itself; otherwise it waits on a branch
+# (adcvd-refresh/YYYY-MM) with an issue for review.
 on:
   schedule: [{ cron: '41 11 3 * *' }]   # 3rd of each month, 11:41 UTC
   workflow_dispatch:
@@ -9,10 +10,9 @@ permissions:
 concurrency: { group: adcvd-refresh, cancel-in-progress: false }
 jobs:
   refresh:
-    if: github.repository == 'Black-Flag-LLC/tariffwiz'
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    permissions: { contents: write, pull-requests: write, actions: write }
+    permissions: { contents: write, pull-requests: write, issues: write, actions: write }
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -38,21 +38,29 @@ jobs:
           echo "ok=$ok" >> "$GITHUB_OUTPUT"
           tail -n 3 ../test.txt ../audit.txt
       - if: steps.r.outputs.changed == 'true'
-        name: Open the pull request (merge it when every check passed)
+        name: Go live, or hold for review
         run: |
           month=$(date -u +%Y-%m)
-          branch="adcvd-refresh/$month"
-          { echo "## AD/CVD order flags refreshed ($month)"; echo; echo '```json'; cat adcvd_report.json; echo '```'; echo
+          branch="adcvd-refresh/$month"; title="AD/CVD order flags refreshed ($month)"
+          { echo "## $title"; echo; echo '```json'; cat adcvd_report.json; echo '```'; echo
             echo "- Golden tests: $(grep -E 'Tests +[0-9]' test.txt | tr -s ' ')"
             echo "- Heading audit: $(grep -E 'violation shapes' audit.txt | tail -n 1)"; echo
             echo "Opened by the adcvd-refresh workflow."; } > pr.md
           git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$branch"
-          git add app/public/data/rules.json .claude/skills/us-import-duty/references/adcvd.json
-          git commit -qm "AD/CVD order flags refreshed ($month)"
-          git push -q --force origin "$branch"
-          draft=""; [ "${{ steps.checks.outputs.ok }}" = true ] || draft="--draft"
+          git add app/public/data/rules.json
+          git commit -qm "$title"
+          hold=""; [ "${{ steps.checks.outputs.ok }}" = true ] || hold="checks failed"
           # revocations come a few at a time; more than 5 orders gone at once smells like a parsing gap: review it
-          [ "$(jq '.removed | length' adcvd_report.json)" -le 5 ] || draft="--draft"
-          gh pr create $draft --base main --head "$branch" --title "AD/CVD order flags refreshed ($month)" --body-file pr.md
-          if [ -z "$draft" ]; then gh pr merge "$branch" --squash --delete-branch && gh workflow run publish.yml; fi
+          [ "$(jq '.removed | length' adcvd_report.json)" -le 5 ] || hold="more than 5 orders removed"
+          if [ -z "$hold" ]; then
+            git pull -q --rebase origin main && git push -q origin HEAD:main
+            gh workflow run ci.yml -f deploy=true   # a GITHUB_TOKEN push does not trigger ci by itself
+            cat pr.md >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git push -q --force origin "HEAD:refs/heads/$branch"
+          if ! gh pr create --draft --base main --head "$branch" --title "$title ($hold)" --body-file pr.md; then
+            { echo "Held for review ($hold). The data is on branch $branch. Open the pull request here:"
+              echo "${{ github.server_url }}/${{ github.repository }}/compare/main...$branch"; echo; cat pr.md; } > note.md
+            gh issue create --title "$title: held for review" --body-file note.md
+          fi

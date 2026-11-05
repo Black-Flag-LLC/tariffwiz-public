@@ -32,7 +32,7 @@ import urllib.request
 API = "https://www.federalregister.gov/api/v1/documents.json"
 UA = "TARIFFWIZ-adcvd-builder/1.0 (research; stdlib urllib)"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_OUT = os.path.join(ROOT, ".claude", "skills", "us-import-duty", "references", "adcvd.json")
+DEFAULT_OUT = os.path.join(ROOT, "data", "build", "adcvd.json")  # intermediate: update_adcvd.py turns it into rules.json "adcvd"
 
 OPP_TITLE = "Opportunity To Request Administrative Review"
 CASE_RE = re.compile(r"\b([AC])-\s*(\d{3})-\s*(\d{3})\b")
@@ -403,6 +403,7 @@ def main() -> int:
         "revoked_dropped": revoked,
         "without_hts": no_hts,
     }
+    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     with open(a.out, "w", encoding="utf-8") as f:
         json.dump({"meta": meta, "orders": out}, f, ensure_ascii=False, indent=1)
     print(json.dumps(meta["counts"]))

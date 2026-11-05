@@ -1,0 +1,13 @@
+# pipeline working files (fetched sources, intermediates, Census downloads); never committed
+data/
+# files the workflows write at the repo root
+seen.txt
+watch.json
+report.md
+pr.md
+note.md
+issue.md
+adcvd_report.json
+test.txt
+audit.txt
+__pycache__/
