@@ -193,7 +193,8 @@ jobs:
         run: |
           mkdir -p data/build/review
           git ls-remote --heads "https://github.com/${{ github.repository }}" 'review/*' | sed 's#.*refs/heads/review/##' > data/build/review/held.txt
-          jq -r '.pending[].doc' app/public/data/status.json | grep -vxF -f data/build/review/held.txt | head -n "$MAX_DOCS" > data/build/review/todo.txt || true
+          jq -r '.pending[].doc' app/public/data/status.json | tr -d '\r' | grep -E '^[0-9]{4}-[0-9]+$' \
+            | grep -vxF -f data/build/review/held.txt | head -n "$MAX_DOCS" > data/build/review/todo.txt || true
           echo "count=$(wc -l < data/build/review/todo.txt)" >> "$GITHUB_OUTPUT"
           echo "To review:"; cat data/build/review/todo.txt
       - if: steps.todo.outputs.count > 0
@@ -215,11 +216,26 @@ jobs:
           rules() {  # pretty for editing, compact (the pipeline's exact format) for commits
             python -I -c "import json,sys; p=sys.argv[2]; r=json.load(open(p,encoding='utf-8')); open(p,'w',encoding='utf-8').write(json.dumps(r,indent=1,ensure_ascii=False) if sys.argv[1]=='pretty' else json.dumps(r,separators=(',',':')))" "$1" "$RULES"
           }
+          fulltext() {  # the document's verbatim text (Claude's WebFetch only returns a summary): published, else on inspection
+            local doc=$1 j u
+            for api in documents public-inspection-documents; do
+              j=$(curl -sfL --retry 3 --retry-all-errors "https://www.federalregister.gov/api/v1/$api/$doc.json") || continue
+              u=$(jq -r '.raw_text_url // empty' <<<"$j")
+              if [ -n "$u" ] && curl -sfL --retry 3 --retry-all-errors "$u" -o "$R/$doc.txt" && [ -s "$R/$doc.txt" ]; then return 0; fi
+              u=$(jq -r '.pdf_url // empty' <<<"$j")
+              if [ -n "$u" ] && curl -sfL --retry 3 --retry-all-errors "$u" -o "$R/$doc.pdf"; then
+                command -v pdftotext >/dev/null || { sudo apt-get update -q && sudo apt-get install -yq poppler-utils; } > /dev/null
+                pdftotext -layout -enc UTF-8 "$R/$doc.pdf" "$R/$doc.txt" && [ -s "$R/$doc.txt" ] && return 0
+              fi
+            done
+            rm -f "$R/$doc.txt"; return 1
+          }
           : > "$R/live.txt"; : > "$R/held_new.txt"
           while read -r doc; do
             [ -n "$doc" ] || continue
             git checkout -q main
             jq --arg d "$doc" '.pending[] | select(.doc == $d)' app/public/data/status.json > "$R/item.json"
+            fulltext "$doc" || echo "::warning::no full text for $doc"
             rules pretty
             sed "s/{{DOC}}/$doc/g" .github/review/prompt.md > "$R/prompt.txt"
             echo "::group::Claude on $doc"
@@ -232,7 +248,7 @@ jobs:
                 "WebFetch(domain:www.govinfo.gov)" "WebFetch(domain:hts.usitc.gov)" \
               < /dev/null 2>&1 | tee "$R/$doc.log" || true
             echo "::endgroup::"
-            decision=$(jq -r '.decision // empty' "$R/$doc.json" 2>/dev/null); summary=$(jq -r '.summary // empty' "$R/$doc.json" 2>/dev/null)
+            decision=$(jq -r '.decision // empty' "$R/$doc.json" 2>/dev/null || true); summary=$(jq -r '.summary // empty' "$R/$doc.json" 2>/dev/null || true)
             [ -n "$decision" ] || { decision=needs_person; summary="The review did not finish with a decision (see the workflow log)."; }
             if ! rules compact; then git checkout -q -- "$RULES"; decision=needs_person; summary="$summary (rules.json was left invalid; edit discarded)"; fi
             others=$(git status --porcelain | grep -v ' pipeline/reviewed.json$' || true)
@@ -243,7 +259,10 @@ jobs:
               echo "$doc" >> "$R/live.txt"
             else
               [ "$decision" != no_change ] || { decision=needs_person; summary="$summary (said no change but did not record only that)"; }
-              git checkout -q -b "review/$doc"
+              if ! git checkout -q -b "review/$doc"; then   # never let a held review land on main
+                echo "::error::could not create branch review/$doc; leaving $doc unreviewed"
+                git checkout -q -f main; git clean -qfd -- app pipeline; continue
+              fi
               { echo "decision: $decision"; echo; echo "$summary"; } > "$R/$doc.md"
               if [ -n "$others" ]; then
                 { echo; echo "### Checks on this branch"; echo; echo '```'

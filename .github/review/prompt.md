@@ -7,11 +7,14 @@ record the result. You run unattended in GitHub Actions: nobody will answer ques
 Federal Register document number: **{{DOC}}**. The watcher's entry for it is in `data/build/review/item.json` (title, type,
 publication date, URL, and `inspection: true` when it is only on public inspection so far).
 
-Read the full text, not just the title:
-- Published: `https://www.federalregister.gov/api/v1/documents/{{DOC}}.json` gives `raw_text_url`, `body_html_url` and
-  `pdf_url`; read one of them.
-- On public inspection: `https://www.federalregister.gov/api/v1/public-inspection-documents/{{DOC}}.json` gives `pdf_url`.
-- An annex (lists of HTS codes) may be a separate document or only in the PDF: read it when the decision depends on it.
+Read the full text, not just the title. The workflow saved it verbatim in `data/build/review/{{DOC}}.txt` (Federal
+Register raw text, or the PDF converted to text); read it with Read and Grep. If that file is missing or empty, the
+document could not be fetched: choose needs_person unless the watcher's title alone makes no_change certain (for
+example a Foreign-Trade Zone board notice).
+
+WebFetch is available for related documents (an annex published separately, a proclamation this one amends) on the
+Federal Register, govinfo and USITC sites, but it returns a summary, not the verbatim text. Never encode HTS codes,
+rates or dates from a WebFetch summary: if the decision depends on text you only have as a summary, choose needs_person.
 
 ## What counts as a change
 
