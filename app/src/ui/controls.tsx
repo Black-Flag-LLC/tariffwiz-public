@@ -92,7 +92,8 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
   }, []);
   const trap = (e: React.KeyboardEvent) => {
     if (e.key !== 'Tab' || !ref.current) return;
-    const f = [...ref.current.querySelectorAll<HTMLElement>('button, input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter((x) => !x.hasAttribute('disabled'));
+    const f = [...ref.current.querySelectorAll<HTMLElement>('button, input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+      .filter((x) => !x.hasAttribute('disabled') && x.getClientRects().length > 0); // skip disabled and hidden controls
     if (!f.length) return;
     const first = f[0], last = f[f.length - 1];
     if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }

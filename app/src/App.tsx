@@ -6,7 +6,7 @@ import type { HtsLine } from './engine/types';
 import { FEE_CLASS, MOT } from './engine/entry';
 import { highlight, highlightTerms, type Hit } from './search';
 import { loadProductSearch, searchProducts } from './searchClient';
-import { clearHistory, readHistory, remember, saveLast, useSettings, type History } from './settings';
+import { clearHistory, exportFile, importFile, readHistory, remember, saveHistory, saveLast, useSettings, type History } from './settings';
 import { today, usd, usd0, MODES, EXAMPLES, type Form, blank, readUrl, toQuery, type Data, compute, fmtDate, stakeOf } from './form';
 import { createPortal } from 'react-dom';
 import { MoneyInput, CountryPicker } from './ui/controls';
@@ -22,7 +22,7 @@ const mastheadEl = document.getElementById('masthead')!;
 const isTyping = (t: EventTarget | null) => !!(t as HTMLElement | null)?.closest?.('input, select, textarea, [contenteditable]');
 
 export default function App() {
-  const [settings, setSettings] = useSettings();
+  const [settings, setSettings, settingsSaved] = useSettings();
   const [form, setForm] = useState<Form>(() => readUrl(settings));
   const [data, setData] = useState<Data | null>(null);
   const [loadError, setLoadError] = useState('');
@@ -319,8 +319,23 @@ export default function App() {
       </footer>
 
       {panel === 'settings' && (
-        <SettingsPanel s={settings} set={setSettings} onClose={() => setPanel('none')} data={data}
-          clear={() => { setHistory(clearHistory()); notify('History cleared'); }} />
+        <SettingsPanel s={settings} set={setSettings} saved={settingsSaved} onClose={() => setPanel('none')} data={data}
+          clear={() => { setHistory(clearHistory()); notify('History cleared'); }}
+          onExport={() => {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([exportFile(settings, history)], { type: 'application/json' }));
+            a.download = 'tariffwiz-settings.json';
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+            notify('Settings saved to tariffwiz-settings.json');
+          }}
+          onImport={(text) => {
+            const r = importFile(text);
+            if (!r) { notify("That file isn't a tariffwiz settings file"); return; }
+            setSettings(r.settings);
+            if (r.history) setHistory(saveHistory(r.history));
+            notify('Settings loaded');
+          }} />
       )}
       {panel === 'help' && <HelpPanel onClose={() => setPanel('none')} />}
       <div className={`toast ${toast ? 'show' : ''}`} role="status" aria-live="polite">{toast}</div>

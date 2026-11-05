@@ -21,19 +21,25 @@
     <meta property="og:image:alt" content="tariffwiz: what you'll pay to bring goods into the US, with every charge explained" />
     <meta name="twitter:card" content="summary_large_image" />
     <script>
-      // The saved theme, before the first paint: a dark-theme visitor never sees the light shell flash (settings.ts
-      // keeps these in sync once the app runs; unknown values match no CSS and fall back to the defaults).
+      // The saved theme, before the first paint, so nobody sees the default theme flash first. settings.ts takes over
+      // once the app runs; src/shell.test.ts runs this script against settings.ts's resolveTheme and theme lists.
       (function () {
-        var s = {};
-        try { s = JSON.parse(localStorage.getItem('tariffwiz.settings.v1') || '{}') || {}; } catch (e) { /* private mode */ }
-        var t = s.theme, r = document.documentElement;
-        var dark = t === 'dark' || t === 'midnight' || (t !== 'light' && t !== 'paper' && matchMedia('(prefers-color-scheme: dark)').matches);
-        r.dataset.theme = t === 'light' || t === 'paper' || t === 'dark' || t === 'midnight' ? t : dark ? 'dark' : 'light';
+        var THEMES = ['light', 'paper', 'dark', 'midnight', 'synthwave', 'terminal', 'blueprint', 'bubblegum', 'sunset'];
+        var DARK = ['dark', 'midnight', 'synthwave', 'terminal', 'blueprint'];
+        var is = function (list, v) { return list.indexOf(v) >= 0; };
+        var s = null;
+        try { s = JSON.parse(localStorage.getItem('tariffwiz.settings.v1') || 'null'); } catch (e) { /* private mode, bad JSON */ }
+        if (!s || typeof s !== 'object') s = {};
+        var r = document.documentElement, t = s.theme;
+        if (!is(THEMES, t)) t = matchMedia('(prefers-color-scheme: dark)').matches
+          ? (is(DARK, s.systemDark) ? s.systemDark : 'dark')
+          : (is(THEMES, s.systemLight) && !is(DARK, s.systemLight) ? s.systemLight : 'light');
+        r.dataset.theme = t;
         r.dataset.accent = s.accent || 'blue';
         r.dataset.density = s.density || 'comfortable';
         r.dataset.text = s.textSize || 'normal';
-        r.dataset.motion = s.reduceMotion || matchMedia('(prefers-reduced-motion: reduce)').matches ? 'reduced' : 'full';
-        r.style.colorScheme = dark ? 'dark' : 'light';
+        r.dataset.motion = s.reduceMotion === true || matchMedia('(prefers-reduced-motion: reduce)').matches ? 'reduced' : 'full';
+        r.style.colorScheme = is(DARK, t) ? 'dark' : 'light';
       })();
     </script>
   </head>

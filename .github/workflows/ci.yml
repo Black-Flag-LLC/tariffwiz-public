@@ -45,6 +45,20 @@ jobs:
       - run: npx vite build          # tsc -b already ran in typecheck
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v4 (pins its own upload-artifact by SHA)
         with: { path: app/dist }
+  lighthouse:
+    # The built site as a phone: performance (median of 3 runs) at least 90, accessibility and best practices 100
+    # (app/scripts/lighthouse.ts). A drop shows as a failed check and an email; it does not hold back the deploy, so a
+    # data update never waits on a timing measurement. Theme contrast is checked in the tests (src/themes.test.ts).
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults: { run: { working-directory: app } }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - run: npm ci
+      - run: npx vite build
+      - run: npm run lighthouse
   deploy:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.deploy)
     needs: [lint-python, test-build]

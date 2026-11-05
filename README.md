@@ -44,8 +44,10 @@ npm --prefix app run quote --silent -- --hts 8708.29.51.90 --from PL --value 100
 
 Everything runs from this repository's GitHub Actions; there is no other copy.
 
-- **Daily (`tariff-watch`, 14:17 UTC):** checks USITC for a new HTS revision, the Federal Register (published and on
-  public inspection) for tariff proclamations and notices, and CBP CSMS messages. New items go to a "Tariff watch"
+- **Twice a day (`tariff-watch`, 14:17 and 02:47 UTC):** checks USITC for a new HTS revision, the Federal Register
+  (published and on public inspection) for tariff proclamations and notices, and CBP CSMS messages. GitHub often starts
+  scheduled runs hours late and can drop one; the second slot keeps the check daily, and a run with nothing new
+  changes nothing. New items go to a "Tariff watch"
   issue, and any published action not yet reviewed shows in a banner above every result on the site.
 - **New HTS revision:** the same job rebuilds the data and runs the golden tests, the filing audit and a check against
   the duties CBP actually collected (Census import data). When no Chapter 99 row, note or list moved and every check
@@ -58,7 +60,9 @@ Everything runs from this repository's GitHub Actions; there is no other copy.
   `pipeline/reviewed.json` and goes live. One that changes a duty is encoded on a `review/<document>` branch, tested,
   and left for a person with an issue; so is anything Claude cannot settle. Once nothing is left unreviewed, the
   "rules checked" date moves to today.
-- **Every push to `main`:** CI (lint, typecheck, tests, filing audit) and, when it passes, a GitHub Pages deploy.
+- **Every push to `main`:** CI (lint, typecheck, tests, filing audit) and, when it passes, a GitHub Pages deploy. A
+  Lighthouse check of the built site runs beside it (phone performance at least 90, accessibility and best practices
+  100) and fails visibly without holding back the deploy; the tests also check every theme's text contrast.
 - **Monthly (Dependabot):** grouped pull requests for the pinned GitHub Actions and the app's npm packages.
 
 ### Settings

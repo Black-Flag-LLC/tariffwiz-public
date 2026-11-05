@@ -6,7 +6,11 @@ name: tariff-watch
 # otherwise it waits on a branch (tariff-update/REV) with an issue saying what needs a person ("rule work needed"), and
 # the banner tells users what isn't in the results yet.
 on:
-  schedule: [{ cron: '17 14 * * *' }]   # daily 14:17 UTC: after the Federal Register's 06:00 ET issue and 08:45 ET public inspection
+  # Twice a day. GitHub starts scheduled runs late here (5-6 hours is common) and may drop one, so a second slot keeps
+  # "daily" true; a run with nothing new changes nothing (items already seen or reviewed are skipped).
+  schedule:
+    - cron: '17 14 * * *'   # 14:17 UTC: after the Federal Register's 06:00 ET issue and 08:45 ET public inspection
+    - cron: '47 2 * * *'    # 02:47 UTC: after the day's late public-inspection filings
   workflow_dispatch:
     inputs:
       release:

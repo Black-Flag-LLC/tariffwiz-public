@@ -1,6 +1,7 @@
 import { COUNTRIES } from '../countries';
 import type { Answers, Mode, Question } from '../engine/types';
-import { DEFAULT_SETTINGS, type Accent, type Settings, type Theme } from '../settings';
+import { useEffect, useRef, useState } from 'react';
+import { ACCENTS, DARK_THEMES, DEFAULT_SETTINGS, LIGHT_THEMES, TEXT_SIZES, THEMES, resolveTheme, themeInfo, type Accent, type Settings, type ThemeId } from '../settings';
 import { usd0, MODES, EXAMPLES, type Form, type Data } from '../form';
 import { NumInput, MoneyInput, Sheet, Seg, Toggle } from './controls';
 
@@ -65,26 +66,65 @@ export function Empty({ onPick }: { onPick: (x: (typeof EXAMPLES)[number]) => vo
   );
 }
 
-const THEMES: { v: Theme; label: string }[] = [
-  { v: 'system', label: 'System' }, { v: 'light', label: 'Light' }, { v: 'paper', label: 'Paper' },
-  { v: 'dark', label: 'Dark' }, { v: 'midnight', label: 'Midnight' },
-];
-const ACCENTS: Accent[] = ['blue', 'violet', 'teal', 'amber', 'rose'];
+/** A theme as a card that previews itself: data-theme (and the chosen accent) on the card applies that theme's colours. */
+function ThemeCard({ id, accent, on, onPick }: { id: ThemeId; accent: Accent; on: boolean; onPick: () => void }) {
+  const t = themeInfo(id);
+  return (
+    <button type="button" role="radio" aria-checked={on} className="themecard" data-theme={id} data-accent={accent} onClick={onPick}>
+      <span className="tc-panel" aria-hidden="true"><b>$3,697</b><i /><span /></span>
+      <span className="tc-name">{t.label}{t.fun && <small>{t.fun}</small>}</span>
+    </button>
+  );
+}
 
-export function SettingsPanel({ s, set, onClose, clear, data }: { s: Settings; set: (p: Partial<Settings>) => void; onClose: () => void;
-  clear: () => void; data: Data | null }) {
+export function SettingsPanel({ s, set, saved, onClose, clear, data, onExport, onImport }: {
+  s: Settings; set: (p: Partial<Settings>) => void; saved: boolean; onClose: () => void; clear: () => void; data: Data | null;
+  onExport: () => void; onImport: (text: string) => void;
+}) {
+  const shown = themeInfo(resolveTheme(s, matchMedia('(prefers-color-scheme: dark)').matches));
+  const [confirmReset, setConfirmReset] = useState(false);
+  useEffect(() => {
+    if (!confirmReset) return;
+    const t = setTimeout(() => setConfirmReset(false), 4000);
+    return () => clearTimeout(t);
+  }, [confirmReset]);
+  const file = useRef<HTMLInputElement>(null);
   return (
     <Sheet title="Settings" onClose={onClose}>
+      {!saved && <p className="setnote warn" role="status">This browser isn't saving settings (a private window, or storage is turned off), so they reset when it closes.</p>}
       <section className="setgroup">
-        <h3>Appearance</h3>
-        <div className="setrow"><span>Theme</span><Seg label="Theme" value={s.theme} options={THEMES.map((t) => ({ v: t.v, label: t.label }))} onChange={(v) => set({ theme: v })} /></div>
+        <h3>Theme</h3>
+        <div className="themes" role="radiogroup" aria-label="Theme">
+          <button type="button" role="radio" aria-checked={s.theme === 'system'} className="themecard system" onClick={() => set({ theme: 'system' })}
+            aria-label={`System: ${themeInfo(s.systemLight).label} by day, ${themeInfo(s.systemDark).label} at night`}>
+            {[s.systemLight, s.systemDark].map((id, i) => (
+              <span key={i} data-theme={id} data-accent={s.accent} aria-hidden="true">
+                <span className="tc-panel"><b>{i ? '☾' : '☀'}</b><i /><span /></span>
+                <span className="tc-name">{i ? <small>follows your device</small> : 'System'}</span>
+              </span>
+            ))}
+          </button>
+          {THEMES.map((t) => <ThemeCard key={t.id} id={t.id} accent={s.accent} on={s.theme === t.id} onPick={() => set({ theme: t.id })} />)}
+        </div>
+        {s.theme === 'system' && <>
+          <div className="setrow"><span>By day</span>
+            <select value={s.systemLight} onChange={(e) => set({ systemLight: e.target.value as ThemeId })} aria-label="Theme by day">
+              {LIGHT_THEMES.map((id) => <option key={id} value={id}>{themeInfo(id).label}</option>)}
+            </select></div>
+          <div className="setrow"><span>At night</span>
+            <select value={s.systemDark} onChange={(e) => set({ systemDark: e.target.value as ThemeId })} aria-label="Theme at night">
+              {DARK_THEMES.map((id) => <option key={id} value={id}>{themeInfo(id).label}</option>)}
+            </select></div>
+        </>}
         <div className="setrow"><span>Accent</span>
           <div className="swatches" role="radiogroup" aria-label="Accent colour">
-            {ACCENTS.map((a) => <button key={a} role="radio" aria-checked={s.accent === a} aria-label={a} className={`swatch ${a} ${s.accent === a ? 'on' : ''}`} onClick={() => set({ accent: a })} />)}
+            {ACCENTS.map((a) => <button key={a} role="radio" aria-checked={s.accent === a} aria-label={a} disabled={!!shown.fun}
+              className={`swatch ${a} ${s.accent === a ? 'on' : ''}`} onClick={() => set({ accent: a })} />)}
           </div></div>
+        {shown.fun && <p className="setnote">{shown.label} brings its own colours; the accent applies to Light, Paper, Dark and Midnight.</p>}
         <div className="setrow"><span>Density</span><Seg label="Density" value={s.density} options={[{ v: 'comfortable', label: 'Comfortable' }, { v: 'compact', label: 'Compact' }]} onChange={(v) => set({ density: v })} /></div>
-        <div className="setrow"><span>Text size</span><Seg label="Text size" value={s.textSize} options={[{ v: 'normal', label: 'Normal' }, { v: 'large', label: 'Large' }]} onChange={(v) => set({ textSize: v })} /></div>
-        <Toggle on={s.reduceMotion} onChange={(v) => set({ reduceMotion: v })} label="Reduce motion" sub="No animated totals or transitions." />
+        <div className="setrow"><span>Text size</span><Seg label="Text size" value={s.textSize} options={TEXT_SIZES.map((t) => ({ v: t.v, label: t.label }))} onChange={(v) => set({ textSize: v })} /></div>
+        <Toggle on={s.reduceMotion} onChange={(v) => set({ reduceMotion: v })} label="Reduce motion" sub="No animated totals, transitions or blinking." />
         <Toggle on={s.showHints} onChange={(v) => set({ showHints: v })} label="Show keyboard hints" />
       </section>
       <section className="setgroup">
@@ -106,10 +146,23 @@ export function SettingsPanel({ s, set, onClose, clear, data }: { s: Settings; s
         <Toggle on={s.keepHistory} onChange={(v) => set({ keepHistory: v })} label="Remember recent products and countries" />
         <div className="setrow"><span /><button className="ghost" onClick={clear}>Clear history</button></div>
       </section>
+      <section className="setgroup">
+        <h3>Your settings</h3>
+        <p className="setnote">They stay in this browser and follow you between its tabs. To use them in another browser, save them to a file and load it there.</p>
+        <div className="setactions">
+          <button className="ghost" onClick={onExport}>Save to a file</button>
+          <button className="ghost" onClick={() => file.current?.click()}>Load from a file</button>
+          <input ref={file} type="file" accept=".json,application/json" hidden
+            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void f.text().then(onImport); }} />
+          <button className={`ghost ${confirmReset ? 'danger' : ''}`} aria-live="polite"
+            onClick={() => { if (confirmReset) { set({ ...DEFAULT_SETTINGS }); setConfirmReset(false); } else setConfirmReset(true); }}>
+            {confirmReset ? 'Click again to restore defaults' : 'Restore default settings'}
+          </button>
+        </div>
+      </section>
       <section className="setgroup about">
         <h3>About the data</h3>
         <p>Tariff schedule {data?.rules.meta.revision ?? '…'}, rules checked {data?.rules.meta.checked ?? '…'}. Everything runs in your browser; settings and history never leave this device.</p>
-        <button className="ghost" onClick={() => set({ ...DEFAULT_SETTINGS })}>Restore default settings</button>
       </section>
     </Sheet>
   );

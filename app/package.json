@@ -16,7 +16,8 @@
     "audit:headings": "tsx scripts/audit_headings.ts --max 150",
     "check": "npm run lint && npm run typecheck && npm test && npm run audit:headings",
     "quote": "tsx scripts/quote.ts",
-    "census": "tsx scripts/validate_census.ts"
+    "census": "tsx scripts/validate_census.ts",
+    "lighthouse": "tsx scripts/lighthouse.ts"
   },
   "dependencies": {
     "react": "^19.3.1",
