@@ -38,14 +38,7 @@ function validSettings(x: Settings): Settings {
     defaultCountry: typeof x.defaultCountry === 'string' && /^[A-Z]{2}$|^$/.test(x.defaultCountry) ? x.defaultCountry : '',
     defaultValue: typeof x.defaultValue === 'string' && /^\d+(\.\d+)?$/.test(x.defaultValue) ? x.defaultValue : d.defaultValue };
 }
-/** Apply the saved theme before React renders (no light flash for dark-theme users). */
-export function applySavedTheme() {
-  const s = validSettings(read(KEY, DEFAULT_SETTINGS));
-  const dark = s.theme === 'dark' || s.theme === 'midnight' || (s.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
-  const root = document.documentElement;
-  root.dataset.theme = s.theme === 'system' ? (dark ? 'dark' : 'light') : s.theme;
-  root.dataset.accent = s.accent; root.dataset.density = s.density; root.dataset.text = s.textSize;
-}
+// index.html applies the saved theme before the first paint (an inline script reading KEY); useSettings keeps it current.
 const HIST = 'tariffwiz.history.v1';
 const LAST = 'tariffwiz.last.v1';
 

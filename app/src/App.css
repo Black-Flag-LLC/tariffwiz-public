@@ -1,23 +1,24 @@
-/* ---------- themes (data-theme on <html>, set by settings.ts) ---------- */
+/* ---------- themes (data-theme on <html>, set by index.html, then settings.ts) ---------- */
+/* --subtle is the quietest text colour (4.5:1 on every background of its theme); --faint is for borders and strokes only */
 :root, [data-theme='light'] {
-  --bg: #f4f3ef; --bg2: #ecebe5; --panel: #ffffff; --ink: #191917; --muted: #67665f; --faint: #9a988f; --line: #e6e4dd; --line2: #d6d3ca;
+  --bg: #f4f3ef; --bg2: #ecebe5; --panel: #ffffff; --ink: #191917; --muted: #67665f; --faint: #9a988f; --subtle: #6a6962; --line: #e6e4dd; --line2: #d6d3ca;
   --hover: #f6f5f1; --warn-bg: #fbf1dd; --warn: #7a4b06; --err: #a32d2d; --good: #1e7a4c; --good-bg: #e6f4ec; --mark: #fff0b3;
   --c-base: #4b83e8; --c-301: #e0663a; --c-232: #7b61d1; --c-country: #c98a1b; --c-fee: #c2bfb5;
   --shadow: 0 1px 2px rgba(20, 20, 15, 0.04), 0 10px 30px rgba(20, 20, 15, 0.07);
   --glass: rgba(255, 255, 255, 0.72);
 }
 [data-theme='paper'] {
-  --bg: #f3ecdf; --bg2: #ebe2d1; --panel: #fbf7ef; --ink: #2a241b; --muted: #6e6455; --faint: #a39783; --line: #e4dacb; --line2: #d4c7b2;
+  --bg: #f3ecdf; --bg2: #ebe2d1; --panel: #fbf7ef; --ink: #2a241b; --muted: #6e6455; --faint: #a39783; --subtle: #675d4f; --line: #e4dacb; --line2: #d4c7b2;
   --hover: #f5eee2; --mark: #f7dc8c; --c-fee: #c9bba3; --glass: rgba(251, 247, 239, 0.75);
   --shadow: 0 1px 2px rgba(60, 40, 10, 0.05), 0 10px 30px rgba(60, 40, 10, 0.08);
 }
 [data-theme='dark'] {
-  --bg: #121211; --bg2: #191917; --panel: #1b1b19; --ink: #ecebe6; --muted: #a8a69e; --faint: #74726b; --line: #2c2b28; --line2: #3a3935;
+  --bg: #121211; --bg2: #191917; --panel: #1b1b19; --ink: #ecebe6; --muted: #a8a69e; --faint: #74726b; --subtle: #8c8a82; --line: #2c2b28; --line2: #3a3935;
   --hover: #22221f; --warn-bg: #3a2a0c; --warn: #fac775; --err: #f09595; --good: #7fd6a4; --good-bg: #16301f; --mark: #5a4a10;
   --c-fee: #55534d; --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.3); --glass: rgba(27, 27, 25, 0.72);
 }
 [data-theme='midnight'] {
-  --bg: #000; --bg2: #08080a; --panel: #0d0d10; --ink: #f2f2f5; --muted: #a2a2ad; --faint: #6e6e78; --line: #1e1e24; --line2: #2b2b33;
+  --bg: #000; --bg2: #08080a; --panel: #0d0d10; --ink: #f2f2f5; --muted: #a2a2ad; --faint: #6e6e78; --subtle: #80808a; --line: #1e1e24; --line2: #2b2b33;
   --hover: #16161b; --warn-bg: #2e2208; --warn: #ffcf7a; --err: #ff9b9b; --good: #86e0ad; --good-bg: #0f2618; --mark: #4d3f0a;
   --c-fee: #4a4a54; --shadow: 0 0 0 1px rgba(255, 255, 255, 0.02), 0 10px 30px rgba(0, 0, 0, 0.6); --glass: rgba(13, 13, 16, 0.75);
 }
@@ -48,6 +49,8 @@ button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 [data-motion='reduced'] *, [data-motion='reduced'] *::before, [data-motion='reduced'] *::after { transition: none !important; animation: none !important; }
 .page { max-width: 1180px; margin: 0 auto; padding: 4px 20px 48px; }
+/* index.html's mount points add no box: the sticky header and the app lay out as children of .page */
+#masthead, #root { display: contents; }
 
 /* header */
 .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; position: sticky; top: 0; z-index: 10;
@@ -59,7 +62,8 @@ button { cursor: pointer; }
 .fresh { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); background: var(--glass);
   border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; }
 .fresh i { width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 3px var(--good-bg); }
-@media (max-width: 560px) { .fresh { display: none; } }
+.fresh.line { display: none; }
+@media (max-width: 560px) { .top .fresh { display: none; } .fresh.line { display: inline-flex; margin: -6px 0 14px; } }
 .icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; border: 1px solid var(--line);
   background: var(--glass); color: var(--muted); font-weight: 650; }
 .icon:hover { color: var(--ink); border-color: var(--line2); }
@@ -77,7 +81,7 @@ button { cursor: pointer; }
 
 /* form */
 .label { display: block; font-size: 0.83rem; font-weight: 560; color: var(--muted); letter-spacing: 0.01em; margin-bottom: 6px; }
-.label em { font-style: normal; font-weight: 400; color: var(--faint); margin-left: 4px; }
+.label em { font-style: normal; font-weight: 400; color: var(--subtle); margin-left: 4px; }
 .field { display: flex; flex-direction: column; margin-bottom: 14px; flex: 1; min-width: 0; position: relative; }
 .field small { color: var(--muted); font-size: 0.83rem; margin-top: 6px; line-height: 1.45; }
 input, select { height: var(--ctl); padding: 0 12px; border: 1px solid var(--line2); border-radius: 10px; background: var(--panel); width: 100%;
@@ -99,7 +103,7 @@ button:focus-visible, summary:focus-visible, a:focus-visible, .sheet:focus-visib
 .searchbox svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; fill: none;
   stroke: var(--muted); stroke-width: 2; stroke-linecap: round; }
 .searchbox input { height: calc(var(--ctl) + 8px); padding-left: 40px; padding-right: 40px; font-size: 1.07rem; border-radius: 12px; }
-kbd { font: 0.75rem ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--faint); border: 1px solid var(--line2);
+kbd { font: 0.75rem ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--subtle); border: 1px solid var(--line2);
   border-bottom-width: 2px; border-radius: 6px; padding: 0 5px; background: var(--panel); }
 .searchbox kbd { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); }
 .hintkey { margin-left: 6px; font-size: 0.68rem; }
@@ -118,7 +122,7 @@ mark { background: var(--mark); color: inherit; border-radius: 3px; padding: 0 1
 .hint { color: var(--muted); font-size: 0.87rem; margin: 8px 2px 0; }
 .code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.9rem; letter-spacing: -0.01em; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; align-items: center; }
-.chiplabel { font-size: 0.78rem; color: var(--faint); margin-right: 2px; }
+.chiplabel { font-size: 0.78rem; color: var(--subtle); margin-right: 2px; }
 .chip { font-size: 0.8rem; background: var(--panel); border: 1px solid var(--line2); border-radius: 999px; padding: 3px 10px; color: var(--muted);
   max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 button.chip:hover { border-color: var(--accent); color: var(--ink); }
@@ -129,9 +133,9 @@ button.chip:hover { border-color: var(--accent); color: var(--ink); }
 .pickedtop { display: flex; align-items: center; gap: 8px; }
 .pickeddesc { margin-top: 4px; font-weight: 520; line-height: 1.4; }
 .picked details { margin-top: 6px; font-size: 0.83rem; color: var(--muted); }
-.picked details summary { cursor: pointer; width: fit-content; }
+.picked details summary { cursor: pointer; width: fit-content; padding: 3px 0; }
 .picked details p { margin: 6px 0 0; }
-.link { margin-left: auto; border: 0; background: none; color: var(--accent); font-size: 0.87rem; padding: 0; }
+.link { margin-left: auto; border: 0; background: none; color: var(--accent); font-size: 0.87rem; padding: 4px 2px; margin-block: -4px; }
 
 .seg { display: inline-flex; flex-wrap: wrap; gap: 4px; background: var(--hover); border: 1px solid var(--line); border-radius: 11px; padding: 3px; }
 .seg button { border: 0; background: transparent; border-radius: 8px; padding: 7px 13px; color: var(--muted); transition: background 0.15s, color 0.15s; }
@@ -220,7 +224,7 @@ details[open] .chev { transform: rotate(90deg); }
 .badge.req { background: var(--warn-bg); color: var(--warn); }
 .badge.may { background: var(--accent-bg); color: var(--accent); }
 .muted { color: var(--muted); font-size: 0.83rem; }
-.foot { color: var(--faint); font-size: 0.8rem; margin-top: 22px; text-align: center; }
+.foot { color: var(--subtle); font-size: 0.8rem; margin-top: 22px; text-align: center; }
 .printhead { display: none; }
 
 /* sheets (settings, help), toggles, toast */
@@ -336,7 +340,7 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3
 .ehead .num { text-align: right; }
 .eline > label, .eline > div { display: flex; flex-direction: column; min-width: 0; margin: 0; }
 .eline input { height: 34px; padding: 0 8px; font-size: 0.9rem; width: 100%; min-width: 0; }
-.eline .n { color: var(--faint); padding-top: 8px; text-align: right; font-size: 0.85rem; }
+.eline .n { color: var(--subtle); padding-top: 8px; text-align: right; font-size: 0.85rem; }
 .eline small { color: var(--muted); font-size: 0.74rem; margin-top: 3px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .eline.bad input { border-color: var(--err); }
 .eline .c-duty { align-items: flex-end; padding-top: 8px; }

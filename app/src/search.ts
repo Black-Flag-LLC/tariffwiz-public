@@ -22,12 +22,15 @@ let docs: Doc[] = [];
 // "Other aircraft (…, except unmanned aircraft of heading 8806)" must not match "unmanned aircraft"
 const dropExcept = (p: string) => p.replace(/\([^)]*\b(except|other than)\b[^)]*\)/gi, ' ').replace(/\b(except|other than)\b[^;:>]*/gi, ' ');
 
+const toDoc = (leaf: Leaf): Doc => ({ leaf, digits: leaf[0].replace(/\D/g, ''),
+  desc: norm(leaf[1]).split(' ').filter(Boolean).map(stem), path: norm(dropExcept(leaf[2])).split(' ').filter(Boolean).map(stem),
+  head: norm(dropExcept(leaf[2].split(' > ')[0] ?? '')).split(' ').filter(Boolean).map(stem),
+  tail: norm(dropExcept(leaf[2].split(' > ').slice(-2).join(' '))).split(' ').filter(Boolean).map(stem),
+  parts: /\bparts?\b|accessories/i.test(leaf[2] + ' ' + leaf[1]) });
+
+/** Index the product list. The site does this in a worker (search.worker.ts); tests and scripts call it directly. */
 export function buildIndex(leaves: Leaf[]) {
-  docs = leaves.map((leaf) => ({ leaf, digits: leaf[0].replace(/\D/g, ''),
-    desc: norm(leaf[1]).split(' ').filter(Boolean).map(stem), path: norm(dropExcept(leaf[2])).split(' ').filter(Boolean).map(stem),
-    head: norm(dropExcept(leaf[2].split(' > ')[0] ?? '')).split(' ').filter(Boolean).map(stem),
-    tail: norm(dropExcept(leaf[2].split(' > ').slice(-2).join(' '))).split(' ').filter(Boolean).map(stem),
-    parts: /\bparts?\b|accessories/i.test(leaf[2] + ' ' + leaf[1]) }));
+  docs = leaves.map(toDoc);
 }
 
 export function search(q: string, limit = 25): Hit[] {

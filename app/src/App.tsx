@@ -1,16 +1,23 @@
 import './App.css';
 import type React from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { loadLine, loadPga, loadRules, loadSearch, loadStatus, type Pga, type Status } from './data';
+import { loadLine, loadPga, loadRules, loadStatus, searchUrl, type Pga, type Status } from './data';
 import type { HtsLine } from './engine/types';
 import { FEE_CLASS, MOT } from './engine/entry';
-import { buildIndex, highlight, highlightTerms, search } from './search';
+import { highlight, highlightTerms, type Hit } from './search';
+import { loadProductSearch, searchProducts } from './searchClient';
 import { clearHistory, readHistory, remember, saveLast, useSettings, type History } from './settings';
 import { today, usd, usd0, MODES, EXAMPLES, type Form, blank, readUrl, toQuery, type Data, compute, fmtDate, stakeOf } from './form';
-import { MoneyInput, CountryPicker, Logo, GearIcon } from './ui/controls';
+import { createPortal } from 'react-dom';
+import { MoneyInput, CountryPicker } from './ui/controls';
+import { Fresh, Masthead } from './ui/Masthead';
 import { StaleBanner, Receipt, Agencies } from './ui/Receipt';
 import { QuestionField, Empty, SettingsPanel, HelpPanel } from './ui/panels';
 import EntryView from './Entry';
+
+// index.html holds the page frame: the header shell (swapped for the live header below) and the intro line, which
+// stays as it is: it is the largest thing on first paint, and replacing it would make phones count it as late.
+const mastheadEl = document.getElementById('masthead')!;
 
 const isTyping = (t: EventTarget | null) => !!(t as HTMLElement | null)?.closest?.('input, select, textarea, [contenteditable]');
 
@@ -39,6 +46,9 @@ export default function App() {
   const panelRef = useRef(panel);
   const viewRef = useRef(view);
   useLayoutEffect(() => { panelRef.current = panel; viewRef.current = view; }, [panel, view]);
+  // the live header was just added after the shell's; drop the shell before the browser paints, so nothing moves
+  const headRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => { const h = headRef.current; while (h?.previousSibling) h.previousSibling.remove(); }, []);
   const [toast, setToast] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const valueRef = useRef<HTMLInputElement>(null);
@@ -51,7 +61,7 @@ export default function App() {
     loadRules().then(setData).catch(() => setLoadError('The tariff data could not be loaded. Check your connection and reload.'));
     loadPga().then(setPga);
     loadStatus().then(setStatus);
-    loadSearch().then((l) => { buildIndex(l); setReady(true); }).catch(() => setLoadError('Product search could not be loaded. Reload to try again.'));
+    loadProductSearch(searchUrl()).then(() => setReady(true)).catch(() => setLoadError('Product search could not be loaded. Reload to try again.'));
     if (matchMedia('(min-width: 861px)').matches && !location.search) searchRef.current?.focus();
   }, []);
   useEffect(() => {
@@ -74,7 +84,17 @@ export default function App() {
     if (settings.rememberLast) saveLast(q);
   }, [form, settings]);
 
-  const hits = useMemo(() => (ready && query.trim().length > 1 ? search(query) : []), [query, ready]);
+  const checked = data ? fmtDate(data.rules.meta.checked) : undefined;
+  // the worker answers each query a moment later; until then the list keeps the previous answer, so it never flickers
+  const [found, setFound] = useState<{ q: string; hits: Hit[] }>({ q: '', hits: [] });
+  useEffect(() => {
+    if (!ready || query.trim().length < 2) return;
+    let live = true;
+    searchProducts(query).then((h) => { if (live) { setFound({ q: query, hits: h }); setActive(0); } }).catch(() => { /* the next keystroke asks again */ });
+    return () => { live = false; };
+  }, [query, ready]);
+  const searching = ready && query.trim().length > 1;
+  const hits = searching ? found.hits : [];
   const terms = useMemo(() => highlightTerms(query), [query]);
 
   const complete = !!form.origin && Number(form.value) > 0;
@@ -163,22 +183,10 @@ export default function App() {
   const hint = (k: string) => (settings.showHints ? <kbd className="hintkey" aria-hidden="true">{k}</kbd> : null);
 
   return (
-    <div className="page">
-      <header className="top">
-        <div className="brand"><Logo /><span>tariffwiz</span></div>
-        <div className="seg viewswitch" role="tablist" aria-label="Mode">
-          <button role="tab" aria-selected={view === 'quote'} className={view === 'quote' ? 'on' : ''} onClick={() => setView('quote')} title="One product (Q)">Quote</button>
-          <button role="tab" aria-selected={view === 'entry'} className={view === 'entry' ? 'on' : ''} onClick={() => setView('entry')} title="Multi-line entry for brokers (E)">Entry</button>
-        </div>
-        <div className="topright">
-          <span className="fresh" title="Rates come from the official tariff schedule plus Federal Register and CBP guidance">
-            <i aria-hidden="true" /> Rules current to {data ? fmtDate(data.rules.meta.checked) : '…'}
-          </span>
-          <button className="icon" onClick={() => setPanel('help')} aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
-          <button className="icon" onClick={() => setPanel('settings')} aria-label="Settings" title="Settings (,)"><GearIcon /></button>
-        </div>
-      </header>
-      <p className="lede">What you'll pay to bring goods into the US, with every charge explained.</p>
+    <>
+      {createPortal(<Masthead ref={headRef} view={view} setView={setView} checked={checked}
+        onHelp={() => setPanel('help')} onSettings={() => setPanel('settings')} />, mastheadEl)}
+      <Fresh className="fresh line" checked={checked} />
       {loadError && <p className="error banner" role="alert">{loadError}</p>}
       {status && <StaleBanner s={status} />}
 
@@ -215,7 +223,7 @@ export default function App() {
                 ))}
               </ul>
             )}
-            {query.trim().length > 1 && ready && !hits.length && <p className="hint">No match. Try a simpler word, or the first 4–6 digits of the code.</p>}
+            {searching && found.q === query && !hits.length && <p className="hint">No match. Try a simpler word, or the first 4–6 digits of the code.</p>}
             {query && !ready && <p className="hint">Loading product search…</p>}
             {settings.keepHistory && !query && !line && history.products.length > 0 && (
               <div className="chips" aria-label="Recent products">
@@ -316,6 +324,6 @@ export default function App() {
       )}
       {panel === 'help' && <HelpPanel onClose={() => setPanel('none')} />}
       <div className={`toast ${toast ? 'show' : ''}`} role="status" aria-live="polite">{toast}</div>
-    </div>
+    </>
   );
 }

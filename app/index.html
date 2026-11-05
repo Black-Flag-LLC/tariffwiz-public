@@ -2,14 +2,63 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <meta name="description" content="Free US import duty calculator: every tariff, fee and legal source, explained." />
-    <meta name="theme-color" content="#2357d6" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>tariffwiz — US import duty calculator</title>
+    <meta name="description" content="Free US import duty calculator: every tariff, fee and legal source, explained." />
+    <link rel="canonical" href="https://black-flag-llc.github.io/tariffwiz-public/" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <meta name="theme-color" content="#2357d6" />
+    <!-- link previews (Slack, iMessage, LinkedIn, X, …); crawlers need absolute URLs -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="tariffwiz" />
+    <meta property="og:title" content="tariffwiz — US import duty calculator" />
+    <meta property="og:description" content="Free for importers and customs brokers: every tariff, fee and legal source, explained. No account; runs in your browser." />
+    <meta property="og:url" content="https://black-flag-llc.github.io/tariffwiz-public/" />
+    <meta property="og:image" content="https://black-flag-llc.github.io/tariffwiz-public/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="tariffwiz: what you'll pay to bring goods into the US, with every charge explained" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      // The saved theme, before the first paint: a dark-theme visitor never sees the light shell flash (settings.ts
+      // keeps these in sync once the app runs; unknown values match no CSS and fall back to the defaults).
+      (function () {
+        var s = {};
+        try { s = JSON.parse(localStorage.getItem('tariffwiz.settings.v1') || '{}') || {}; } catch (e) { /* private mode */ }
+        var t = s.theme, r = document.documentElement;
+        var dark = t === 'dark' || t === 'midnight' || (t !== 'light' && t !== 'paper' && matchMedia('(prefers-color-scheme: dark)').matches);
+        r.dataset.theme = t === 'light' || t === 'paper' || t === 'dark' || t === 'midnight' ? t : dark ? 'dark' : 'light';
+        r.dataset.accent = s.accent || 'blue';
+        r.dataset.density = s.density || 'comfortable';
+        r.dataset.text = s.textSize || 'normal';
+        r.dataset.motion = s.reduceMotion || matchMedia('(prefers-reduced-motion: reduce)').matches ? 'reduced' : 'full';
+        r.style.colorScheme = dark ? 'dark' : 'light';
+      })();
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- The page frame, painted before the JavaScript loads. #masthead holds the header as React first renders it
+         (src/ui/Masthead.tsx; src/shell.test.ts keeps them identical), which App swaps for the live one. The intro line
+         is static and stays: it is the largest thing on first paint. #masthead and #root have display: contents. -->
+    <div class="page">
+      <div id="masthead">
+        <!-- shell -->
+        <header class="top">
+          <div class="brand"><svg viewBox="0 0 32 32" class="logo" aria-hidden="true"><rect x="3" y="3" width="26" height="26" rx="8" fill="var(--accent)"></rect><path d="M10 11h12M16 11v11M11 17.5l2.5 4.5M21 17.5 18.5 22" stroke="var(--on-accent)" stroke-width="2.4" stroke-linecap="round" fill="none"></path></svg><span>tariffwiz</span></div>
+          <div class="seg viewswitch" role="tablist" aria-label="Mode"><button role="tab" aria-selected="true" class="on" title="One product (Q)">Quote</button><button role="tab" aria-selected="false" class="" title="Multi-line entry for brokers (E)">Entry</button></div>
+          <div class="topright">
+            <span class="fresh" title="Rates come from the official tariff schedule plus Federal Register and CBP guidance"><i aria-hidden="true"></i> Rules current to …</span>
+            <button class="icon" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
+            <button class="icon" aria-label="Settings" title="Settings (,)"><svg viewBox="0 0 24 24" aria-hidden="true" class="gear"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg></button>
+          </div>
+        </header>
+        <!-- /shell -->
+      </div>
+      <p class="lede">What you'll pay to bring goods into the US, with every charge explained.</p>
+      <noscript><p class="lede">tariffwiz runs in your browser and needs JavaScript turned on.</p></noscript>
+      <div id="root"></div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

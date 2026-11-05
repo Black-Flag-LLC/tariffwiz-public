@@ -21,13 +21,10 @@ export async function loadLine(hts: string): Promise<HtsLine | undefined> {
   return findLine(await shards.get(ch)!, d);
 }
 
+/** One line of search.json: the product list the search worker indexes (src/search.worker.ts). */
 export type Leaf = [code: string, desc: string, path: string, rate: string];
-let searchP: Promise<Leaf[]> | null = null;
-export function loadSearch() {
-  searchP ??= fetch(`${BASE}search.json`).then((r) => { if (!r.ok) throw new Error(`search.json ${r.status}`); return r.json(); })
-    .catch((e) => { searchP = null; throw e; });
-  return searchP;
-}
+/** search.json's absolute URL (the worker resolves URLs against its own script, not the page). */
+export const searchUrl = () => new URL(`${BASE}search.json`, location.href).href;
 
 export interface PgaFlag { agency: string; agencyName: string; program: string; level: string; meaning: string; url?: string }
 export interface Pga { flags: Record<string, PgaFlag>; hts: Record<string, string[]>; checked: string }
