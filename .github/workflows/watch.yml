@@ -95,6 +95,7 @@ jobs:
     env:
       REL: ${{ inputs.release || needs.watch.outputs.new_revision }}
       GH_TOKEN: ${{ github.token }}
+      HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: main }   # the watch job may just have pushed a status commit
@@ -120,6 +121,7 @@ jobs:
           python -I pipeline/build_hts.py
           d="data/raw/usitc/revisions/$REL"
           pdftotext -layout -enc UTF-8 "$d/Change_Record.pdf" data/build/change_record.txt || rm -f data/build/change_record.txt
+          pdftotext -layout -enc UTF-8 "$d/Chapter_99.pdf" data/build/chapter99.txt || rm -f data/build/chapter99.txt   # for the rule work
           python -I pipeline/shaded_headings.py --pdf "$d/Chapter_99.pdf" --out data/build/shaded_new.json
           python -I pipeline/update_hts.py --release "$REL" --shaded data/build/shaded_new.json \
             --change-record data/build/change_record.txt --apply
@@ -153,6 +155,20 @@ jobs:
           echo "ok=$ok" >> "$GITHUB_OUTPUT"
           cat ../data/build/checks.md
           if [ "$ok" != true ]; then { echo; echo "Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"; } >> ../data/build/checks.md; fi
+      - if: steps.build.outcome == 'success'
+        name: Keep the report and Chapter 99 text for the rule work (self-improve)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: hts-update
+          path: |
+            data/build/update_report.md
+            data/build/update_status.json
+            data/build/change_record.txt
+            data/build/chapter99.txt
+            data/build/checks.md
+            data/build/shaded_new.json
+          if-no-files-found: ignore
+          retention-days: 30
       - if: steps.build.outputs.changed == 'true' || (inputs.dry_run && steps.build.outputs.changed != '')
         name: Go live, or hold for review
         run: |
@@ -179,6 +195,8 @@ jobs:
               echo "${{ github.server_url }}/${{ github.repository }}/compare/main...tariff-update/$REL"; echo; cat pr.md; } > note.md
             gh issue create --title "$title" --body-file note.md
           fi
+          # Claude does the rule work on top of the held data and offers it for review (improve.yml)
+          if [ "$HAS_KEY" = true ]; then gh workflow run improve.yml -f task=hts -f release="$REL" -f run_id="${{ github.run_id }}"; fi
       - if: steps.build.outputs.changed == 'false' && !inputs.dry_run
         run: echo "The rebuilt data equals what is in main; nothing to do."
 

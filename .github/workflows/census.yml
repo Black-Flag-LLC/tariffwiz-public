@@ -1,6 +1,7 @@
 name: census-check
 # Monthly: run the engine against the duties CBP actually collected in the newest Census month (about 5 weeks after
-# the month ends) and open an issue when it is worse than the limits in pipeline/census_gate.py.
+# the month ends) and open an issue when it is worse than the limits in pipeline/census_gate.py. Then the self-improve
+# workflow looks for rule or engine errors behind the mismatches and offers any measurable fix for review.
 on:
   schedule: [{ cron: '23 13 12 * *' }]   # 12th of each month, 13:23 UTC
   workflow_dispatch:
@@ -15,7 +16,7 @@ jobs:
   census:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    permissions: { contents: read, issues: write }
+    permissions: { contents: read, issues: write, actions: write }
     defaults: { run: { working-directory: app } }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -25,9 +26,9 @@ jobs:
         with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
       - run: npm ci --no-audit --no-fund
       - id: c
-        env: { GH_TOKEN: '${{ github.token }}' }
+        env: { GH_TOKEN: '${{ github.token }}', MONTH_IN: '${{ inputs.month }}' }
         run: |
-          m="${{ inputs.month }}"; [ -n "$m" ] || m=$(python -I ../pipeline/census_gate.py latest)
+          m=$(echo "${MONTH_IN:-$(python -I ../pipeline/census_gate.py latest)}" | grep -E '^[0-9]{4}$' || true)
           if [ -z "$m" ]; then echo "No Census month inside the engine's date window is released yet." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
           npx tsx scripts/validate_census.ts --month "$m"
           f="../data/validation/census_20${m:0:2}-${m:2:2}"
@@ -37,11 +38,25 @@ jobs:
           cat verdict.md >> "$GITHUB_STEP_SUMMARY"
           if [ $code -ne 0 ]; then
             { cat verdict.md; echo; echo "Group tables: download the census artifact from ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-              echo; echo "Next step: the largest mismatch groups in census_20${m:0:2}-${m:2:2}_groups.md point to the rule that moved."
+              echo; echo "Next step: the self-improve workflow is looking for the rule that moved; it comments here or opens a fix for review."
+              echo "The largest mismatch groups in census_20${m:0:2}-${m:2:2}_groups.md point to it."
               echo "Reproduce locally with \`cd app && npx tsx scripts/validate_census.ts --month $m\`, fix app/public/data/rules.json, and re-run this workflow."; } > issue.md
             gh issue create --title "Census check 20${m:0:2}-${m:2:2}: engine drifted from collected duties" --body-file issue.md
           fi
-          echo "file=$f" >> "$GITHUB_OUTPUT"
+          echo "file=$f" >> "$GITHUB_OUTPUT"; echo "month=$m" >> "$GITHUB_OUTPUT"
+      - if: steps.c.outputs.file != ''
+        name: Start the self-improve run on this month
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          M: ${{ steps.c.outputs.month }}
+          F: ${{ steps.c.outputs.file }}
+        run: |
+          if [ "$HAS_KEY" != true ]; then echo "No ANTHROPIC_API_KEY secret: no self-improve run."; exit 0; fi
+          mis=$(jq '.share.MISMATCH // 0' "${F}_summary.json")
+          if awk "BEGIN { exit !($mis < 0.2) }"; then echo "Unexplained share ${mis}%: too little to be worth a run."; exit 0; fi
+          gh workflow run improve.yml -f task=census -f month="$M"
+          echo "Started self-improve on 20${M:0:2}-${M:2:2} (unexplained share ${mis}%)." | tee -a "$GITHUB_STEP_SUMMARY"
       - if: steps.c.outputs.file != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

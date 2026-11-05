@@ -60,6 +60,13 @@ Everything runs from this repository's GitHub Actions; there is no other copy.
   `pipeline/reviewed.json` and goes live. One that changes a duty is encoded on a `review/<document>` branch, tested,
   and left for a person with an issue; so is anything Claude cannot settle. Once nothing is left unreviewed, the
   "rules checked" date moves to today.
+- **Self-improve (`self-improve`, after each Census check and each held HTS revision):** Claude looks for rule or
+  engine errors behind the Census mismatches (instructions: `.github/improve/census.md`), or does the Chapter 99 rule
+  work a new HTS revision needs (`.github/improve/hts.md`). Every change must cite a legal source, never just fit the
+  numbers. The workflow itself decides whether to offer it (`pipeline/improve_gate.py`): only the rules, the engine and
+  added golden tests may change, never an existing test or the validation; every check must pass; and a Census fix must
+  raise accuracy on the newest month without slipping on the month before. An offered change arrives as a pull
+  request (or a branch and an issue) with the before/after numbers, and goes live only when a person merges it.
 - **Every push to `main`:** CI (lint, typecheck, tests, filing audit) and, when it passes, a GitHub Pages deploy. A
   Lighthouse check of the built site runs beside it (phone performance at least 90, accessibility and best practices
   100) and fails visibly without holding back the deploy; the tests also check every theme's text contrast.
@@ -73,6 +80,8 @@ Everything runs from this repository's GitHub Actions; there is no other copy.
 | Variable | `REVIEW_MODEL` | Model for the review (default `claude-opus-5-5`). |
 | Variable | `REVIEW_BUDGET_USD` | Spending cap per document (default `3`). |
 | Variable | `REVIEW_MAX_DOCS` | Documents reviewed per day (default `6`); the rest wait for the next run. |
+| Variable | `IMPROVE_MODEL` | Model for self-improve (default: `REVIEW_MODEL`, else `claude-opus-5-5`). |
+| Variable | `IMPROVE_BUDGET_USD` | Spending cap per self-improve run (default `10`; about one run a month). |
 
 Set them under Settings → Secrets and variables → Actions, or with `gh secret set` / `gh variable set`.
 
@@ -90,8 +99,14 @@ Test the review on one document without publishing anything (the result is in th
 gh workflow run watch.yml -f review_doc=2026-12345
 ```
 
-Taking a held change live: open a pull request from its `review/…` or `tariff-update/…` branch, check it, and merge;
-the push to `main` deploys it. Deleting a `review/…` branch instead lets the next daily run review that action again.
+Run self-improve by hand (a dry run shows the result in the run summary and pushes nothing):
+
+```bash
+gh workflow run improve.yml -f task=census -f dry_run=true
+```
+
+Taking a held change live: open a pull request from its `review/…`, `tariff-update/…` or `improve/…` branch, check
+it, and merge; the push to `main` deploys it. Deleting a `review/…` branch instead lets the next daily run review that action again.
 
 ## Sources
 

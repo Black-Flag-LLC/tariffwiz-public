@@ -1,0 +1,238 @@
+name: self-improve
+# Claude improves the rules and the engine against ground truth and offers each change for a person to merge: a pull
+# request, or a branch and an issue when Actions may not open pull requests. Started by:
+#   census-check, monthly: task=census on the newest Census month (instructions: .github/improve/census.md)
+#   tariff-watch, when a new HTS revision is held for rule work: task=hts (.github/improve/hts.md)
+# The workflow, not the agent, decides what may be offered (pipeline/improve_gate.py): only the rules, the engine and
+# added golden tests may change; every check must pass; a Census fix must measurably help the newest month without
+# slipping on the month before. Nothing here goes live by itself.
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: census (accuracy against the newest Census month) or hts (rule work for a held HTS revision)
+        type: choice
+        options: [census, hts]
+        default: census
+      month:
+        description: 'census: Census month as YYMM (e.g. 2609); empty = newest released'
+        type: string
+        default: ''
+      release:
+        description: 'hts: the held revision (e.g. 2026HTSRev23); its data is on branch tariff-update/<release>'
+        type: string
+        default: ''
+      run_id:
+        description: 'hts: the tariff-watch run that held it (its hts-update artifact has the report)'
+        type: string
+        default: ''
+      dry_run:
+        description: Run everything and show the result in the summary, but push and open nothing
+        type: boolean
+        default: false
+concurrency: { group: self-improve, cancel-in-progress: false }
+permissions:
+  contents: read
+jobs:
+  improve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    permissions: { contents: write, issues: write, pull-requests: write, actions: write }
+    env:
+      TASK: ${{ inputs.task }}
+      HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+      MODEL: ${{ vars.IMPROVE_MODEL || vars.REVIEW_MODEL || 'claude-opus-5-5' }}
+      BUDGET: ${{ vars.IMPROVE_BUDGET_USD || '10' }}
+      I: data/build/improve
+      RULES: app/public/data/rules.json
+    steps:
+      - if: env.HAS_KEY != 'true'
+        run: echo "No ANTHROPIC_API_KEY secret, so nothing to improve with." | tee -a "$GITHUB_STEP_SUMMARY"
+      - if: env.HAS_KEY == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: main, fetch-depth: 0, persist-credentials: false }   # no git credentials while Claude runs
+      - if: env.HAS_KEY == 'true'
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with: { python-version: '3.11' }
+      - if: env.HAS_KEY == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - id: what
+        if: env.HAS_KEY == 'true'
+        name: Work out what to improve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MONTH_IN: ${{ inputs.month }}
+          REL: ${{ inputs.release }}
+          RUN_ID: ${{ inputs.run_id }}
+          DRY: ${{ inputs.dry_run }}
+        run: |
+          mkdir -p "$I"
+          yymm() { echo "$1" | grep -E '^[0-9]{4}$' || true; }
+          m=$(yymm "${MONTH_IN:-$(python -I pipeline/census_gate.py latest)}")
+          [ -n "$m" ] || { echo "No Census month to measure against (input '$MONTH_IN')." | tee -a "$GITHUB_STEP_SUMMARY"; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
+          month="20${m:0:2}-${m:2:2}"
+          p=""   # the month before, to catch a fix tuned to one month (census only)
+          [ "$TASK" = census ] && p=$(python -I -c "y,m=int('$m'[:2]),int('$m'[2:]); y,m=(y,m-1) if m>1 else (y-1,12); print(f'{y:02d}{m:02d}' if (y,m)>=(26,8) else '')")
+          prev=""; [ -n "$p" ] && prev="20${p:0:2}-${p:2:2}"
+          if [ "$TASK" = census ]; then
+            branch="improve/census-$month"
+          else
+            echo "$REL" | grep -qE '^20[0-9]{2}HTSRev[0-9]+$' || { echo "::error::release '$REL' is not an HTS revision name"; exit 1; }
+            echo "$RUN_ID" | grep -qE '^[0-9]+$' || { echo "::error::run_id '$RUN_ID' is not a run number"; exit 1; }
+            branch="improve/hts-$REL"
+            if git fetch -q origin "refs/heads/tariff-update/$REL:refs/remotes/origin/tariff-update/$REL" 2>/dev/null; then
+              git checkout -q --detach "origin/tariff-update/$REL"
+            elif [ "$DRY" = true ]; then
+              echo "No branch tariff-update/$REL (fine for a dry run): working on main."
+            else
+              echo "::error::branch tariff-update/$REL not found"; exit 1
+            fi
+            gh run download "$RUN_ID" -R "${{ github.repository }}" -n hts-update -D "$I/hts"
+          fi
+          if [ "$DRY" != true ] && git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
+            echo "$branch already exists and waits for a person; delete it to try again." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          { echo "m=$m"; echo "p=$p"; echo "month=$month"; echo "prev=$prev"; echo "branch=$branch"; echo "base=$(git rev-parse HEAD)"; } >> "$GITHUB_OUTPUT"
+      - id: before
+        if: steps.what.outputs.m != '' && steps.what.outputs.skip != 'true'
+        name: Measure before (Census validation on the current rules)
+        env: { M: '${{ steps.what.outputs.m }}', P: '${{ steps.what.outputs.p }}' }
+        run: |
+          npm ci --prefix app --no-audit --no-fund > /dev/null
+          for x in $M $P; do
+            npm --prefix app run census --silent -- --month "$x" > "$I/census_before_$x.txt" 2>&1 || { tail -20 "$I/census_before_$x.txt"; exit 1; }
+            cp "data/validation/census_20${x:0:2}-${x:2:2}_summary.json" "$I/before_$x.json"
+          done
+          python -I pipeline/census_gate.py check "$I/before_$M.json" | tee "$I/before.md" || true   # worse than the limits is why we are here
+      - id: claude
+        if: steps.before.outcome == 'success'
+        name: Claude investigates and fixes
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          NO_COLOR: '1'
+          M: ${{ steps.what.outputs.m }}
+          P: ${{ steps.what.outputs.p }}
+          MONTH: ${{ steps.what.outputs.month }}
+          PREV: ${{ steps.what.outputs.prev }}
+          REL: ${{ inputs.task == 'hts' && inputs.release || '' }}   # checked in "Work out what to improve"
+        run: |
+          npm install -g --no-audit --no-fund @anthropic-ai/claude-code@2.1.317 > /dev/null
+          command -v pdftotext > /dev/null || { sudo apt-get update -q && sudo apt-get install -yq poppler-utils; } > /dev/null
+          rules() {  # pretty for editing, compact (the pipeline's exact format) for commits
+            python -I -c "import json,sys; p=sys.argv[2]; r=json.load(open(p,encoding='utf-8')); open(p,'w',encoding='utf-8').write(json.dumps(r,indent=1,ensure_ascii=False) if sys.argv[1]=='pretty' else json.dumps(r,separators=(',',':')))" "$1" "$RULES"
+          }
+          sed -e "s/{{MONTH}}/$MONTH/g" -e "s/{{YYMM}}/$M/g" -e "s/{{PREV_MONTH}}/${PREV:-none}/g" -e "s/{{PREV}}/${P:-none}/g" \
+            -e "s/{{RELEASE}}/$REL/g" ".github/improve/$TASK.md" > "$I/prompt.txt"
+          rules pretty
+          claude -p "$(cat "$I/prompt.txt")" --model "$MODEL" --max-budget-usd "$BUDGET" --permission-mode dontAsk \
+            --tools Read Edit Write Glob Grep Bash WebFetch \
+            --allowedTools Read Edit Write Glob Grep \
+              "Bash(npm --prefix app test:*)" "Bash(npm --prefix app run audit:headings:*)" "Bash(npm --prefix app run quote:*)" \
+              "Bash(npm --prefix app run census:*)" "Bash(npm --prefix app run typecheck:*)" "Bash(npm --prefix app run lint:*)" \
+              "Bash(python -I pipeline/census_gate.py check:*)" "Bash(pdftotext:*)" \
+              "Bash(curl -sfL https://www.federalregister.gov/:*)" "Bash(curl -sfL https://www.govinfo.gov/:*)" \
+              "Bash(curl -sfL https://hts.usitc.gov/:*)" \
+              "WebFetch(domain:www.federalregister.gov)" "WebFetch(domain:www.govinfo.gov)" "WebFetch(domain:hts.usitc.gov)" \
+              "WebFetch(domain:www.cbp.gov)" "WebFetch(domain:www.ecfr.gov)" \
+            < /dev/null 2>&1 | tee "$I/claude.log" || true
+          rules compact || { git checkout -q -- "$RULES"; echo "rules.json was left invalid; edit discarded." | tee "$I/invalid.txt"; }
+      - id: gate
+        if: steps.claude.outcome == 'success'
+        name: Check the result (the workflow decides, not the agent)
+        env:
+          M: ${{ steps.what.outputs.m }}
+          P: ${{ steps.what.outputs.p }}
+          BASE: ${{ steps.what.outputs.base }}
+          NO_COLOR: '1'
+          MONTH: ${{ steps.what.outputs.month }}
+          REL: ${{ inputs.task == 'hts' && inputs.release || '' }}
+        run: |
+          set +e
+          decision=$(jq -r '.decision // empty' "$I/result.json" 2>/dev/null)
+          summary=$(jq -r '.summary // empty' "$I/result.json" 2>/dev/null)
+          [ -n "$decision" ] || { decision=none; summary="The agent did not finish with a decision (see the log)."; }
+          [ -f "$I/invalid.txt" ] && decision=none
+          ok=false
+          {
+            echo "**Decision: $decision.** $summary"; echo
+            if [ -s "$I/result.json" ]; then
+              jq -r '(.sources // [] | if length > 0 then "**Sources**\n" + (map("- " + .) | join("\n")) + "\n" else empty end),
+                     ((.groups // .items // []) | if length > 0 then "**What was looked at**\n" + (map("- " + .) | join("\n")) + "\n" else empty end)' "$I/result.json"
+            fi
+          } > "$I/body.md"
+          if [ "$decision" = improved ] || [ "$decision" = encoded ]; then
+            ok=true
+            { echo "### Checks (run by the workflow)"; echo; } >> "$I/body.md"
+            if out=$(python -I pipeline/improve_gate.py scope "$BASE"); then echo "- Scope: $out" >> "$I/body.md"; else { echo "- Scope: ❌"; echo "$out"; } >> "$I/body.md"; ok=false; fi
+            for c in lint typecheck test audit:headings; do
+              if npm --prefix app run "$c" > "$I/check_$c.txt" 2>&1; then echo "- $c: ✅" >> "$I/body.md"; else echo "- $c: ❌ (see the log)" >> "$I/body.md"; tail -30 "$I/check_$c.txt"; ok=false; fi
+            done
+            echo >> "$I/body.md"
+            for x in $M $P; do
+              npm --prefix app run census --silent -- --month "$x" > "$I/census_after_$x.txt" 2>&1 || ok=false
+              cp "data/validation/census_20${x:0:2}-${x:2:2}_summary.json" "$I/after_$x.json" 2>/dev/null || ok=false
+            done
+            if [ "$TASK" = census ]; then
+              args="$I/before_$M.json $I/after_$M.json"; [ -n "$P" ] && args="$args $I/before_$P.json $I/after_$P.json"
+              python -I pipeline/improve_gate.py census $args >> "$I/body.md" || ok=false
+            else
+              python -I pipeline/census_gate.py check "$I/after_$M.json" >> "$I/body.md" || ok=false
+            fi
+          else
+            cat "$I/before.md" >> "$I/body.md"
+          fi
+          git diff --stat >> "$I/diffstat.txt"
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"; echo "decision=$decision" >> "$GITHUB_OUTPUT"
+          { echo "# Self-improve ($TASK): $MONTH $REL"; echo
+            [ "$ok" = true ] && echo "✅ **Offered for review.**" || echo "**Nothing offered.**"; echo; cat "$I/body.md"; echo
+            echo '```'; cat "$I/diffstat.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+      - if: steps.gate.outputs.ok == 'true' && !inputs.dry_run
+        name: Offer the change (pull request, or branch and issue)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.what.outputs.branch }}
+          MONTH: ${{ steps.what.outputs.month }}
+          REL: ${{ inputs.release }}
+        run: |
+          git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          gh auth setup-git
+          git checkout -q -b "$BRANCH"
+          git add "$RULES" app/src
+          if [ "$TASK" = census ]; then title="Self-improve: Census $MONTH accuracy"; else title="Self-improve: rule work for HTS $REL"; fi
+          git commit -qm "$title" -m "$(jq -r '.summary' "$I/result.json")" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
+          git push -q origin "HEAD:refs/heads/$BRANCH"
+          gh workflow run ci.yml --ref "$BRANCH" -f deploy=false   # tests and Lighthouse on the branch; deploy runs only on main
+          { cat "$I/body.md"; echo; echo "---"
+            echo "Opened by the self-improve workflow (${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+            echo "Merging puts it live. Check the sources and the before/after numbers; close it to drop the change."; } > "$I/pr.md"
+          if ! gh pr create --base main --head "$BRANCH" --title "$title" --body-file "$I/pr.md"; then
+            # Settings > Actions > General > "Allow GitHub Actions to create and approve pull requests" is off
+            { echo "The change is on branch $BRANCH. Open the pull request here:"
+              echo "${{ github.server_url }}/${{ github.repository }}/compare/main...$BRANCH"; echo; cat "$I/pr.md"; } > "$I/issue.md"
+            gh issue create --title "$title" --body-file "$I/issue.md"
+          fi
+      - if: steps.gate.outputs.ok != 'true' && steps.gate.outcome == 'success' && !inputs.dry_run
+        name: Leave the findings on the open issue, if there is one
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MONTH: ${{ steps.what.outputs.month }}
+          REL: ${{ inputs.release }}
+        run: |
+          if [ "$TASK" = census ]; then q="Census check $MONTH in:title"; else q="HTS $REL in:title"; fi
+          n=$(gh issue list --state open --search "$q" --json number -q '.[0].number')
+          if [ -n "$n" ]; then
+            { echo "### Self-improve looked at this"; echo; cat "$I/body.md"; echo
+              echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"; } > "$I/comment.md"
+            gh issue comment "$n" --body-file "$I/comment.md"
+          fi
+      - if: always() && steps.claude.outcome != 'skipped'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: self-improve
+          path: |
+            data/build/improve/
+            !data/build/improve/hts/
+          retention-days: 30
