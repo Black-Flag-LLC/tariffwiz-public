@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-concurrency: { group: adcvd-refresh, cancel-in-progress: false }
+concurrency: { group: data-writer, cancel-in-progress: false }   # shared with tariff-watch: both commit rules.json
 jobs:
   refresh:
     runs-on: ubuntu-latest

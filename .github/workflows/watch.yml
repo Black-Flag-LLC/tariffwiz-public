@@ -23,7 +23,7 @@ on:
         default: ''
 permissions:
   contents: read
-concurrency: { group: tariff-watch, cancel-in-progress: false }
+concurrency: { group: data-writer, cancel-in-progress: false }   # every job that commits data to main queues here (rules.json is one line: parallel edits always conflict)
 jobs:
   watch:
     runs-on: ubuntu-latest
@@ -68,10 +68,17 @@ jobs:
         name: Publish the status banner when it changed
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
-          if git diff --quiet app/public/data/status.json; then echo "Status unchanged."; exit 0; fi
+          # nothing published since the rules' check date is unreviewed: the rules are checked as of today ("rules
+          # checked" on the site). The review job does the same after it clears the banner.
+          if [ "$(jq '.pending | length' app/public/data/status.json)" = 0 ] \
+             && [ "$(jq -r .meta.checked app/public/data/rules.json)" != "$(python -I -c 'import datetime; print(datetime.date.today())')" ]; then
+            python -I pipeline/mark_reviewed.py --checked
+            python -I pipeline/watch.py --json /dev/null --status app/public/data/status.json > /dev/null || true
+          fi
+          if git diff --quiet app/public/data/status.json app/public/data/rules.json; then echo "Status unchanged."; exit 0; fi
           git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/public/data/status.json
-          git commit -qm "Status: $(jq '.pending | length' app/public/data/status.json) unreviewed tariff action(s)"
+          git add app/public/data/status.json app/public/data/rules.json
+          git commit -qm "Status: $(jq '.pending | length' app/public/data/status.json) unreviewed tariff action(s); rules checked $(jq -r .meta.checked app/public/data/rules.json)"
           git pull -q --rebase origin main && git push -q origin HEAD:main
           gh workflow run ci.yml -f deploy=true   # a GITHUB_TOKEN push does not trigger ci by itself
 
