@@ -2,6 +2,12 @@ name: ci
 # Lint, typecheck, golden tests and the heading audit gate every build; a build of main that passes goes live on
 # GitHub Pages. The data jobs (watch, adcvd-refresh) push with GITHUB_TOKEN, which does not fire `push`, so they start
 # this workflow with `gh workflow run ci.yml -f deploy=true` after they commit.
+#
+# One run per branch at a time, and a newer run cancels an older one: otherwise two runs of main started a minute apart
+# can finish out of order and the older build deploys over the newer one. The newer run carries every older commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 on:
   push:
     branches: [main]
@@ -44,7 +50,6 @@ jobs:
     needs: [lint-python, test-build]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    concurrency: { group: pages, cancel-in-progress: false }
     permissions:
       pages: write
       id-token: write
