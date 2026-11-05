@@ -37,7 +37,8 @@ jobs:
           cat verdict.md >> "$GITHUB_STEP_SUMMARY"
           if [ $code -ne 0 ]; then
             { cat verdict.md; echo; echo "Group tables: download the census artifact from ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-              echo; echo "Next step: compare the mismatch groups with data/validation/census_2026-08_report.md and fix the rule that moved."; } > issue.md
+              echo; echo "Next step: the largest mismatch groups in census_20${m:0:2}-${m:2:2}_groups.md point to the rule that moved."
+              echo "Reproduce locally with \`cd app && npx tsx scripts/validate_census.ts --month $m\`, fix app/public/data/rules.json, and re-run this workflow."; } > issue.md
             gh issue create --title "Census check 20${m:0:2}-${m:2:2}: engine drifted from collected duties" --body-file issue.md
           fi
           echo "file=$f" >> "$GITHUB_OUTPUT"
