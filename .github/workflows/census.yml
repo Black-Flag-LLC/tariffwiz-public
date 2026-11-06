@@ -10,6 +10,10 @@ on:
         description: Census month as YYMM (e.g. 2609); empty = newest released
         type: string
         default: ''
+      improve:
+        description: Then start a self-improve run on the month (the monthly schedule always does)
+        type: boolean
+        default: true
 permissions:
   contents: read
 jobs:
@@ -44,7 +48,7 @@ jobs:
             gh issue create --title "Census check 20${m:0:2}-${m:2:2}: engine drifted from collected duties" --body-file issue.md
           fi
           echo "file=$f" >> "$GITHUB_OUTPUT"; echo "month=$m" >> "$GITHUB_OUTPUT"
-      - if: steps.c.outputs.file != ''
+      - if: steps.c.outputs.file != '' && (github.event_name == 'schedule' || inputs.improve)
         name: Start the self-improve run on this month
         env:
           GH_TOKEN: ${{ github.token }}

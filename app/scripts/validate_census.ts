@@ -141,6 +141,16 @@ function claimFor(iso: string): string | null {
     if (p.in_force === true && !['C', 'K', 'L', 'N', 'W', 'Y', 'Z', 'P+', 'S+', 'E*', 'B'].includes(k) && p.countries.includes(iso)) return k;
   return null;
 }
+// a program open to every column-1 country that makes this line free: K (pharmaceuticals), C (civil aircraft),
+// L (dye intermediates). Any such importer may claim it, so it belongs in the claim band like an FTA.
+function col1ClaimFor(line: HtsLine, iso: string): string | null {
+  if (rules.groups.column2.includes(iso)) return null;
+  for (const s of line.special) {
+    const k = s.program.replace(/[*+]$/, ''), p = rules.programs[k];
+    if (['K', 'C', 'L'].includes(k) && s.rate?.kind === 'free' && p?.in_force && p.countries.includes('*COL1')) return k;
+  }
+  return null;
+}
 
 function rng(seed: number) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32); }
 
@@ -201,9 +211,13 @@ for (const key of sample) {
   if (!e0.ok) { rows.push({ ...row, status: 'ENGINE_ERROR', note: e0.error ?? '' }); continue; }
   const E0 = pct(e0);
   const base = e0.lines.find((l) => l.family === 'base')!;
-  const claim = claimFor(iso);
-  const eC = claim ? run(ENTRY, claim) : null;
-  const EC = eC && eC.ok ? pct(eC) : NaN;
+  // the claim an importer would make: of the country's FTA and a column-1 program the line is free under, the one
+  // that costs least (an FTA claim on a line outside the agreement prices at the full rate)
+  const claims = [claimFor(iso), col1ClaimFor(line, iso)].filter((k): k is string => !!k)
+    .map((k) => ({ k, r: run(ENTRY, k) })).filter((x) => x.r.ok).sort((a, b) => pct(a.r) - pct(b.r));
+  const claim = claims[0]?.k ?? null;
+  const eC = claims[0]?.r ?? null;
+  const EC = eC ? pct(eC) : NaN;
   const dates = MONTH_DATES.map((d) => pct(run(d, null)));
   const dLo = Math.min(...dates), dHi = Math.max(...dates);
   Object.assign(row, {
@@ -279,8 +293,6 @@ function hypothesis(row: Row, r: Result, real: number, line: HtsLine): string {
   const rp19 = Number(row.rp19_share), rp61 = Number(row.rp61_share), r69 = Number(row.real_rp69_on_dutval);
   if (eng > real) {
     if (line.chapter === '88' && has(/^9903\.08\.2/)) return 'Ch.88 aircraft part charged the drone 232 (droneUse defaults to yes for all of ch.88) and note 52 (civilAircraft defaults to no)';
-    const col1 = line.special.find((x) => ['K', 'C', 'L'].includes(x.program) && x.rate?.kind === 'free');
-    if (col1 && real < basePct - 1) return `Base rate free under program ${col1.program} (open to all column-1 countries), but the engine rejects ${col1.program} claims for every country`;
     const VEH = /^9903\.94\.(0[1-4]|40|41|50|51|60|61)$|^9903\.74\.(0[1-3]|06)$/;
     const PARTS = /^9903\.94\.(0[5-7]|3[23]|4[2-5]|5[2-5]|6[2-9])$|^9903\.74\.(0[89]|10)$/;
     if (ch99.some((l) => VEH.test(l.heading)) && (ctry === 'MX' || ctry === 'CA'))
