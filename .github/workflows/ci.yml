@@ -30,6 +30,7 @@ jobs:
         with: { python-version: '3.11' }
       - run: pip install -q ruff==0.17.3 && ruff check pipeline   # ruff.toml
       - run: python -I pipeline/improve_gate.py selftest   # the self-improve gate still refuses what it must
+      - run: python -I pipeline/json_merge.py selftest     # rules.json still merges as JSON, conflicts still stop
   test-build:
     runs-on: ubuntu-latest
     timeout-minutes: 30

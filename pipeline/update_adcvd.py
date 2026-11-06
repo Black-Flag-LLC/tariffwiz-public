@@ -5,6 +5,7 @@
 Runs build_adcvd.py into data/build/adcvd.json, then rewrites only rules.json "adcvd" (same transform as build_rules.py,
 via adcvd_rules.py). Prints and writes what changed (orders added / revoked). The flags only say "an order may apply";
 deposit rates are always the importer's to enter, so a refresh can go live once tests and the heading audit pass.
+An order is removed only with a revocation notice behind it; one simply not found this time is kept.
 """
 import argparse
 import json
@@ -29,14 +30,24 @@ def main():
     before = {(o["case"], o["country"]) for o in rules["adcvd"]}
     subprocess.run([sys.executable, "-I", str(ROOT / "pipeline" / "build_adcvd.py"), "--out", str(REF), "--max-docs", str(a.max_docs)],
                    check=True)
-    new, fixed = adcvd_rules(json.loads(REF.read_text(encoding="utf-8")))
+    ref = json.loads(REF.read_text(encoding="utf-8"))
+    new, fixed = adcvd_rules(ref)
     after = {(o["case"], o["country"]) for o in new}
     if len(after) < 0.8 * len(before):
         raise SystemExit(f"refresh found {len(after)} orders against {len(before)} now: Federal Register fetch looks incomplete, stopping")
-    added, gone = sorted(after - before), sorted(before - after)
+    # An order leaves only when the Federal Register revoked it (the builder records the revocation notice). One that is
+    # merely missing from this refresh is a gap in what was read, not a revocation: it stays, so no person has to judge.
+    revoked = {r["case"]: r for r in ref.get("meta", {}).get("revoked_dropped", [])}
+    gone = sorted(before - after)
+    kept = [o for o in rules["adcvd"] if (o["case"], o["country"]) in gone and o["case"] not in revoked]
+    new = new + kept
+    after = {(o["case"], o["country"]) for o in new}
+    added, removed = sorted(after - before), sorted(before - after)
     rules["adcvd"] = new
     RULES.write_text(json.dumps(rules, separators=(",", ":")), encoding="utf-8")
-    report = {"orders": len(after), "added": [f"{c} {k}" for c, k in added], "removed": [f"{c} {k}" for c, k in gone], "countryFixes": fixed}
+    report = {"orders": len(after), "added": [f"{c} {k}" for c, k in added],
+              "removed": [f"{c} {k} (revoked: FR {revoked[c].get('fr_doc')} {revoked[c].get('date')})" for c, k in removed],
+              "kept_not_revoked": [f"{o['case']} {o['country']}" for o in kept], "countryFixes": fixed}
     print(json.dumps(report, indent=1))
     if a.status:
         a.status.write_text(json.dumps(report, indent=1), encoding="utf-8")

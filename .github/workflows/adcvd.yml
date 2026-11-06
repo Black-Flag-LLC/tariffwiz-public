@@ -38,7 +38,7 @@ jobs:
           echo "ok=$ok" >> "$GITHUB_OUTPUT"
           tail -n 3 ../test.txt ../audit.txt
       - if: steps.r.outputs.changed == 'true'
-        name: Go live, or hold for review
+        name: Go live (held only if a check fails)
         run: |
           month=$(date -u +%Y-%m)
           branch="adcvd-refresh/$month"; title="AD/CVD order flags refreshed ($month)"
@@ -47,11 +47,12 @@ jobs:
             echo "- Heading audit: $(grep -E 'violation shapes' audit.txt | tail -n 1)"; echo
             echo "Opened by the adcvd-refresh workflow."; } > pr.md
           git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config merge.json-rules.driver "python -I pipeline/json_merge.py %O %A %B"   # rules.json merges as JSON (.gitattributes)
+          git config merge.keep-ours.driver true   # status.json: keep main's (.gitattributes)
           git add app/public/data/rules.json
           git commit -qm "$title"
           hold=""; [ "${{ steps.checks.outputs.ok }}" = true ] || hold="checks failed"
-          # revocations come a few at a time; more than 5 orders gone at once smells like a parsing gap: review it
-          [ "$(jq '.removed | length' adcvd_report.json)" -le 5 ] || hold="more than 5 orders removed"
+          # no count limit on removals: update_adcvd.py removes an order only with a revocation notice behind it
           if [ -z "$hold" ]; then
             git pull -q --rebase origin main && git push -q origin HEAD:main
             gh workflow run ci.yml -f deploy=true   # a GITHUB_TOKEN push does not trigger ci by itself

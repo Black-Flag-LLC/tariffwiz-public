@@ -1,0 +1,119 @@
+name: go-live
+# Takes a change live with no one in the loop, once every check passes on the merged result. The change is a branch
+# golive/<name> (pushed by self-improve); its tip commit may carry trailers:
+#   Cleanup: tariff-update/<release>     another branch to delete once live
+#   Closes-title: <text>                 close open issues whose title contains this, once live
+# Steps: merge into main (rules.json merges as JSON, pipeline/json_merge.py, so it never collides with the daily status
+# updates), run .github/scripts/checks.sh on the result (lint, typecheck, golden tests, filing audit, Census check),
+# push main (CI deploys it), delete the branch. A merge conflict or a failed check is a broken change, not a question:
+# the branch moves to held/<name> with an issue saying why, and nothing goes live. The daily tariff-watch restarts this
+# for any golive/ branch still waiting (a queued run can be displaced by another writer's).
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: The branch to take live (golive/<name>)
+        type: string
+        required: true
+      dry_run:
+        description: Merge and run every check, but push nothing
+        type: boolean
+        default: false
+concurrency: { group: data-writer, cancel-in-progress: false }   # one writer of main at a time: watch, adcvd, go-live
+permissions:
+  contents: read
+jobs:
+  golive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions: { contents: write, issues: write, actions: write }
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BRANCH: ${{ inputs.branch }}
+      DRY: ${{ inputs.dry_run }}
+    steps:
+      - name: Check the branch name
+        run: echo "$BRANCH" | grep -qE '^golive/[A-Za-z0-9._-]+$' || { echo "::error::branch must be golive/<name>, got '$BRANCH'"; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: main, fetch-depth: 0 }
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with: { python-version: '3.11' }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - id: merge
+        name: Merge into main (rules.json as JSON)
+        run: |
+          git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config merge.json-rules.driver "python -I pipeline/json_merge.py %O %A %B"
+          git config merge.keep-ours.driver true   # status.json: keep main's, refreshed below
+          if ! git fetch -q origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"; then
+            echo "$BRANCH is gone (already live or held): nothing to do." | tee -a "$GITHUB_STEP_SUMMARY"; echo "gone=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          tip="origin/$BRANCH"
+          title=$(git log -1 --format=%s "$tip")
+          cleanup=$(git log -1 --format='%(trailers:key=Cleanup,valueonly)' "$tip" | head -n 1 | grep -E '^tariff-update/[A-Za-z0-9._-]+$' || true)
+          closes=$(git log -1 --format='%(trailers:key=Closes-title,valueonly)' "$tip" | head -n 1 | grep -E '^[A-Za-z0-9 ._:/-]+$' || true)
+          { echo "title=$title"; echo "cleanup=$cleanup"; echo "closes=$closes"; } >> "$GITHUB_OUTPUT"
+          if git merge --no-ff --no-edit -m "Go live: $title" "$tip" > merge.txt 2>&1; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            # the banner names the HTS revision and what is unreviewed: bring it up to date (best effort; the watch does too)
+            python -I pipeline/watch.py --json /dev/null --status app/public/data/status.json > /dev/null 2>&1 || true
+            git diff --quiet app/public/data/status.json || { git add app/public/data/status.json; git commit -qm "Status refreshed after going live"; }
+          else
+            cat merge.txt; git merge --abort || true
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "why=it no longer merges with main: $(grep -m1 -E 'CONFLICT|not merging' merge.txt | tr -d '\r')" >> "$GITHUB_OUTPUT"
+          fi
+      - id: checks
+        if: steps.merge.outputs.ok == 'true'
+        name: Every check on the merged result
+        env: { NO_COLOR: '1' }
+        run: |
+          npm ci --prefix app --no-audit --no-fund > /dev/null
+          if .github/scripts/checks.sh > checks.md; then ok=true; else ok=false; fi
+          cat checks.md
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+      - if: steps.checks.outputs.ok == 'true' && !inputs.dry_run
+        name: Go live
+        env:
+          TITLE: ${{ steps.merge.outputs.title }}
+          CLEANUP: ${{ steps.merge.outputs.cleanup }}
+          CLOSES: ${{ steps.merge.outputs.closes }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          for i in 1 2 3; do   # another push landed meanwhile (a person, Dependabot): merge it the same way and retry
+            git push -q origin HEAD:main && break
+            [ "$i" = 3 ] && { echo "::error::could not push to main"; exit 1; }
+            git pull -q --no-rebase --no-edit origin main
+          done
+          gh workflow run ci.yml -f deploy=true   # a GITHUB_TOKEN push does not start CI by itself
+          git push -q origin --delete "$BRANCH"
+          [ -z "$CLEANUP" ] || git push -q origin --delete "$CLEANUP" || true
+          if [ -n "$CLOSES" ]; then
+            for n in $(gh issue list --state open --search "\"$CLOSES\" in:title" --json number -q '.[].number'); do
+              gh issue close "$n" -c "Fixed automatically and live in $(git rev-parse --short HEAD): $TITLE ($RUN)."
+            done
+          fi
+          { echo "# Live: $TITLE"; echo; cat checks.md; } >> "$GITHUB_STEP_SUMMARY"
+      - if: (steps.merge.outputs.ok == 'false' || steps.checks.outputs.ok == 'false') && !inputs.dry_run
+        name: Hold it (a broken change is never published)
+        env:
+          TITLE: ${{ steps.merge.outputs.title }}
+          WHY: ${{ steps.merge.outputs.why || 'a check failed on the merged result' }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          held="held/${BRANCH#golive/}"
+          git push -q --force origin "refs/remotes/origin/$BRANCH:refs/heads/$held"
+          git push -q origin --delete "$BRANCH"
+          { echo "This automated change was **not** published: $WHY."; echo
+            [ -f checks.md ] && { cat checks.md; echo; }
+            echo "It is kept on branch \`$held\` (${{ github.server_url }}/${{ github.repository }}/compare/main...$held)."
+            echo "The site still runs the last good version. The next automated run that touches the same thing tries again;"
+            echo "deleting the branch drops this attempt."; echo; echo "Run: $RUN"; } > held.md
+          gh issue create --title "Not published: $TITLE" --body-file held.md
+          { echo "# Held: $TITLE"; echo; cat held.md; } >> "$GITHUB_STEP_SUMMARY"
+      - if: inputs.dry_run && steps.merge.outputs.gone != 'true'
+        name: Dry run result (nothing pushed)
+        env: { TITLE: '${{ steps.merge.outputs.title }}', OK: '${{ steps.merge.outputs.ok }}/${{ steps.checks.outputs.ok }}' }
+        run: |
+          { echo "# Dry run: $TITLE"; echo; echo "Merge / checks: $OK"; echo; cat checks.md 2>/dev/null; } >> "$GITHUB_STEP_SUMMARY"

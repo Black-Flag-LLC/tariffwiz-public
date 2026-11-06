@@ -42,41 +42,49 @@ npm --prefix app run quote --silent -- --hts 8708.29.51.90 --from PL --value 100
 
 ## How the data stays current
 
-Everything runs from this repository's GitHub Actions; there is no other copy.
+Everything runs from this repository's GitHub Actions, with no one in the loop: there is no other copy and nothing
+waits for a person. A change goes live when it passes every automated check; one that fails a check is never
+published, the site keeps the last good version, and an issue says what failed.
+
+**The checks a change must pass to go live** (`.github/scripts/checks.sh`): lint, typecheck, the golden tests (which
+may gain cases but never lose or change one), the filing audit (1.9 million calculations), and the Census check: the
+engine against the duties CBP actually collected in the newest month, within its limits. Automated changes may touch
+only the rules, the engine and added tests (`pipeline/improve_gate.py`). `rules.json` merges as JSON
+(`pipeline/json_merge.py`), so automated writers never collide on its single line.
 
 - **Twice a day (`tariff-watch`, 14:17 and 02:47 UTC):** checks USITC for a new HTS revision, the Federal Register
   (published and on public inspection) for tariff proclamations and notices, and CBP CSMS messages. GitHub often starts
   scheduled runs hours late and can drop one; the second slot keeps the check daily, and a run with nothing new
-  changes nothing. New items go to a "Tariff watch"
-  issue, and any published action not yet reviewed shows in a banner above every result on the site.
-- **New HTS revision:** the same job rebuilds the data and runs the golden tests, the filing audit and a check against
-  the duties CBP actually collected (Census import data). When no Chapter 99 row, note or list moved and every check
-  passes, it commits to `main` and the site redeploys by itself. Otherwise it holds the data on a
-  `tariff-update/<revision>` branch and opens an issue saying what needs rule work.
-- **Monthly:** AD/CVD order flags are refreshed from the Federal Register (3rd), and the Census check re-runs on the
-  newest month and opens an issue if accuracy drops (12th).
-- **Daily review (`tariff-watch`, after the watch):** Claude reads the verbatim text of each Federal Register action on
-  the banner (instructions: `.github/review/prompt.md`). An action that changes no duty is recorded in
-  `pipeline/reviewed.json` and goes live. One that changes a duty is encoded on a `review/<document>` branch, tested,
-  and left for a person with an issue; so is anything Claude cannot settle. Once nothing is left unreviewed, the
-  "rules checked" date moves to today.
-- **Self-improve (`self-improve`, after each Census check and each held HTS revision):** Claude looks for rule or
-  engine errors behind the Census mismatches (instructions: `.github/improve/census.md`), or does the Chapter 99 rule
-  work a new HTS revision needs (`.github/improve/hts.md`). Every change must cite a legal source, never just fit the
-  numbers. The workflow itself decides whether to offer it (`pipeline/improve_gate.py`): only the rules, the engine and
-  added golden tests may change, never an existing test or the validation; every check must pass; and a Census fix must
-  raise accuracy on the newest month without slipping on the month before. An offered change arrives as a pull
-  request (or a branch and an issue) with the before/after numbers, and goes live only when a person merges it.
-- **Every push to `main`:** CI (lint, typecheck, tests, filing audit) and, when it passes, a GitHub Pages deploy. A
-  Lighthouse check of the built site runs beside it (phone performance at least 90, accessibility and best practices
+  changes nothing. New items go to the "Tariff watch" log issue, and any published action not yet reviewed shows in
+  a banner above every result on the site.
+- **Daily review (after the watch):** Claude reads the verbatim text of each new Federal Register action
+  (`.github/review/prompt.md`). One that changes no duty is recorded and goes live. One that changes a duty is encoded
+  and goes live once it passes every check. One Claude cannot settle, or whose change fails a check, waits on a
+  `review/<document>` branch and is tried again after a week. When nothing is left unreviewed, the "rules checked" date
+  moves to today and the log issue closes.
+- **New HTS revision:** the data is rebuilt and checked. If no Chapter 99 row, note or list moved, it goes live.
+  Otherwise self-improve does the rule work (`.github/improve/hts.md`) and it goes live through go-live.
+- **Self-improve (`self-improve`, after each Census check and each HTS revision that needs rule work):** Claude looks
+  for rule or engine errors behind the Census mismatches (`.github/improve/census.md`), each fix backed by a legal
+  source, never just fitted to the numbers. The workflow decides: a Census fix must raise accuracy on the newest month
+  without slipping on the month before. A fix that qualifies goes to go-live.
+- **Go-live (`go-live`):** merges a qualifying change into `main`, runs every check again on the merged result,
+  publishes it and closes the issue it settles. A merge conflict or a failed check moves it to `held/<name>` with an
+  issue. The daily watch restarts go-live for any change still waiting.
+- **Monthly:** AD/CVD order flags are refreshed from the Federal Register (3rd); an order leaves only when a revocation
+  notice is found, and one simply not found that month is kept. The Census check re-runs on the newest month (12th),
+  starts self-improve, and closes its drift issue when accuracy is back within the limits.
+- **Every push to `main`:** CI and, when it passes, a GitHub Pages deploy. A Lighthouse check of the built site runs
+  beside it (phone performance at least 90 on a CPU-calibrated median of five runs, accessibility and best practices
   100) and fails visibly without holding back the deploy; the tests also check every theme's text contrast.
-- **Monthly (Dependabot):** grouped pull requests for the pinned GitHub Actions and the app's npm packages.
+- **Monthly (Dependabot):** grouped updates for the pinned GitHub Actions and the app's npm packages, merged by
+  `dependabot-merge` as soon as CI passes on them.
 
 ### Settings
 
 | Where | Name | What it does |
 |---|---|---|
-| Secret | `ANTHROPIC_API_KEY` | Turns the daily review on. Without it the banner keeps listing actions until reviewed by hand. |
+| Secret | `ANTHROPIC_API_KEY` | Turns on the review and self-improve. Without it the banner keeps listing actions and the log issue stays open. |
 | Variable | `REVIEW_MODEL` | Model for the review (default `claude-opus-5-5`). |
 | Variable | `REVIEW_BUDGET_USD` | Spending cap per document (default `3`). |
 | Variable | `REVIEW_MAX_DOCS` | Documents reviewed per day (default `6`); the rest wait for the next run. |
@@ -85,13 +93,7 @@ Everything runs from this repository's GitHub Actions; there is no other copy.
 
 Set them under Settings → Secrets and variables → Actions, or with `gh secret set` / `gh variable set`.
 
-### By hand
-
-Record a review yourself (the action leaves the banner):
-
-```bash
-python -I pipeline/mark_reviewed.py 2026-12345 "what it does / what was encoded"
-```
+### By hand (never required)
 
 Test the review on one document without publishing anything (the result is in the run summary):
 
@@ -99,14 +101,18 @@ Test the review on one document without publishing anything (the result is in th
 gh workflow run watch.yml -f review_doc=2026-12345
 ```
 
-Run self-improve by hand (a dry run shows the result in the run summary and pushes nothing):
+Run self-improve or go-live as a dry run (every step, nothing pushed):
 
 ```bash
 gh workflow run improve.yml -f task=census -f dry_run=true
 ```
 
-Taking a held change live: open a pull request from its `review/…`, `tariff-update/…` or `improve/…` branch, check
-it, and merge; the push to `main` deploys it. Deleting a `review/…` branch instead lets the next daily run review that action again.
+```bash
+gh workflow run golive.yml -f branch=golive/<name> -f dry_run=true
+```
+
+A change held as broken stays on its `held/…` or `review/…` branch; deleting the branch drops it (a review is tried
+again the next day).
 
 ## Sources
 

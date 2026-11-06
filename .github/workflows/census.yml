@@ -47,6 +47,11 @@ jobs:
               echo "Reproduce locally with \`cd app && npx tsx scripts/validate_census.ts --month $m\`, fix app/public/data/rules.json, and re-run this workflow."; } > issue.md
             gh issue create --title "Census check 20${m:0:2}-${m:2:2}: engine drifted from collected duties" --body-file issue.md
           fi
+          if [ $code -eq 0 ]; then   # back within the limits: an earlier drift issue for this month is settled
+            for n in $(gh issue list --state open --search "\"Census check 20${m:0:2}-${m:2:2}\" in:title" --json number -q '.[].number'); do
+              gh issue close "$n" -c "The Census check for 20${m:0:2}-${m:2:2} is within the limits again (${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+            done
+          fi
           echo "file=$f" >> "$GITHUB_OUTPUT"; echo "month=$m" >> "$GITHUB_OUTPUT"
       - if: steps.c.outputs.file != '' && (github.event_name == 'schedule' || inputs.improve)
         name: Start the self-improve run on this month

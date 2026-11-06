@@ -1,11 +1,11 @@
 name: self-improve
-# Claude improves the rules and the engine against ground truth and offers each change for a person to merge: a pull
-# request, or a branch and an issue when Actions may not open pull requests. Started by:
+# Claude improves the rules and the engine against ground truth, and a change that passes every check goes live with
+# no one in the loop (through the go-live workflow, golive.yml). Started by:
 #   census-check, monthly: task=census on the newest Census month (instructions: .github/improve/census.md)
 #   tariff-watch, when a new HTS revision is held for rule work: task=hts (.github/improve/hts.md)
-# The workflow, not the agent, decides what may be offered (pipeline/improve_gate.py): only the rules, the engine and
+# The workflow, not the agent, decides what may go live (pipeline/improve_gate.py): only the rules, the engine and
 # added golden tests may change; every check must pass; a Census fix must measurably help the newest month without
-# slipping on the month before. Nothing here goes live by itself.
+# slipping on the month before. go-live then merges it into main and runs every check again on the merged result.
 on:
   workflow_dispatch:
     inputs:
@@ -76,11 +76,11 @@ jobs:
           [ "$TASK" = census ] && p=$(python -I -c "y,m=int('$m'[:2]),int('$m'[2:]); y,m=(y,m-1) if m>1 else (y-1,12); print(f'{y:02d}{m:02d}' if (y,m)>=(26,8) else '')")
           prev=""; [ -n "$p" ] && prev="20${p:0:2}-${p:2:2}"
           if [ "$TASK" = census ]; then
-            branch="improve/census-$month"
+            branch="golive/census-$month"
           else
             echo "$REL" | grep -qE '^20[0-9]{2}HTSRev[0-9]+$' || { echo "::error::release '$REL' is not an HTS revision name"; exit 1; }
             echo "$RUN_ID" | grep -qE '^[0-9]+$' || { echo "::error::run_id '$RUN_ID' is not a run number"; exit 1; }
-            branch="improve/hts-$REL"
+            branch="golive/hts-$REL"
             if git fetch -q origin "refs/heads/tariff-update/$REL:refs/remotes/origin/tariff-update/$REL" 2>/dev/null; then
               git checkout -q --detach "origin/tariff-update/$REL"
             elif [ "$DRY" = true ]; then
@@ -90,8 +90,9 @@ jobs:
             fi
             gh run download "$RUN_ID" -R "${{ github.repository }}" -n hts-update -D "$I/hts"
           fi
-          if [ "$DRY" != true ] && git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
-            echo "$branch already exists and waits for a person; delete it to try again." | tee -a "$GITHUB_STEP_SUMMARY"
+          held="held/${branch#golive/}"
+          if [ "$DRY" != true ] && git ls-remote --exit-code --heads origin "$branch" "$held" > /dev/null; then
+            echo "$branch or $held already exists (going live, or held as broken); delete it to try again." | tee -a "$GITHUB_STEP_SUMMARY"
             echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           { echo "m=$m"; echo "p=$p"; echo "month=$month"; echo "prev=$prev"; echo "branch=$branch"; echo "base=$(git rev-parse HEAD)"; } >> "$GITHUB_OUTPUT"
@@ -162,7 +163,8 @@ jobs:
                      ((.groups // .items // []) | if length > 0 then "**What was looked at**\n" + (map("- " + .) | join("\n")) + "\n" else empty end)' "$I/result.json"
             fi
           } > "$I/body.md"
-          if [ "$decision" = improved ] || [ "$decision" = encoded ]; then
+          # a held HTS revision whose rules already cover it ("no_change") goes live too, once every check passes
+          if [ "$decision" = improved ] || [ "$decision" = encoded ] || { [ "$TASK" = hts ] && [ "$decision" = no_change ]; }; then
             ok=true
             { echo "### Checks (run by the workflow)"; echo; } >> "$I/body.md"
             if out=$(python -I pipeline/improve_gate.py scope "$BASE"); then echo "- Scope: $out" >> "$I/body.md"; else { echo "- Scope: ❌"; echo "$out"; } >> "$I/body.md"; ok=false; fi
@@ -190,43 +192,43 @@ jobs:
             echo '```'; cat "$I/diffstat.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           exit 0
       - if: steps.gate.outputs.ok == 'true' && !inputs.dry_run
-        name: Offer the change (pull request, or branch and issue)
+        name: Hand it to go-live (merge, every check again, publish)
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ steps.what.outputs.branch }}
           MONTH: ${{ steps.what.outputs.month }}
-          REL: ${{ inputs.release }}
+          REL: ${{ inputs.task == 'hts' && inputs.release || '' }}
         run: |
           git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           gh auth setup-git
           git checkout -q -b "$BRANCH"
           git add "$RULES" app/src
-          if [ "$TASK" = census ]; then title="Self-improve: Census $MONTH accuracy"; else title="Self-improve: rule work for HTS $REL"; fi
-          git commit -qm "$title" -m "$(jq -r '.summary' "$I/result.json")" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
-          git push -q origin "HEAD:refs/heads/$BRANCH"
-          gh workflow run ci.yml --ref "$BRANCH" -f deploy=false   # tests and Lighthouse on the branch; deploy runs only on main
-          { cat "$I/body.md"; echo; echo "---"
-            echo "Opened by the self-improve workflow (${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
-            echo "Merging puts it live. Check the sources and the before/after numbers; close it to drop the change."; } > "$I/pr.md"
-          if ! gh pr create --base main --head "$BRANCH" --title "$title" --body-file "$I/pr.md"; then
-            # Settings > Actions > General > "Allow GitHub Actions to create and approve pull requests" is off
-            { echo "The change is on branch $BRANCH. Open the pull request here:"
-              echo "${{ github.server_url }}/${{ github.repository }}/compare/main...$BRANCH"; echo; cat "$I/pr.md"; } > "$I/issue.md"
-            gh issue create --title "$title" --body-file "$I/issue.md"
-          fi
+          if [ "$TASK" = census ]; then title="Self-improve: Census $MONTH accuracy"; closes="Census check $MONTH"
+          else title="HTS $REL: data and rule work"; closes="HTS $REL"; fi
+          { echo "Closes-title: $closes"; [ "$TASK" = hts ] && echo "Cleanup: tariff-update/$REL"
+            echo "Co-Authored-By: Claude <noreply@anthropic.com>"; } > "$I/trailers.txt"
+          # an empty commit when the rules needed nothing (a held HTS revision already covered): it carries the trailers
+          git commit -q --allow-empty -m "$title" -m "$(jq -r '.summary' "$I/result.json")" -m "$(cat "$I/trailers.txt")"
+          git push -q --force origin "HEAD:refs/heads/$BRANCH"
+          gh workflow run golive.yml -f branch="$BRANCH"
+          echo "Handed $BRANCH to go-live." >> "$GITHUB_STEP_SUMMARY"
       - if: steps.gate.outputs.ok != 'true' && steps.gate.outcome == 'success' && !inputs.dry_run
         name: Leave the findings on the open issue, if there is one
         env:
           GH_TOKEN: ${{ github.token }}
           MONTH: ${{ steps.what.outputs.month }}
-          REL: ${{ inputs.release }}
+          REL: ${{ inputs.task == 'hts' && inputs.release || '' }}
         run: |
-          if [ "$TASK" = census ]; then q="Census check $MONTH in:title"; else q="HTS $REL in:title"; fi
+          { echo "### Self-improve looked at this"; echo; cat "$I/body.md"; echo
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"; } > "$I/comment.md"
+          if [ "$TASK" = census ]; then q="\"Census check $MONTH\" in:title"; else q="\"HTS $REL\" in:title"; fi
           n=$(gh issue list --state open --search "$q" --json number -q '.[0].number')
-          if [ -n "$n" ]; then
-            { echo "### Self-improve looked at this"; echo; cat "$I/body.md"; echo
-              echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"; } > "$I/comment.md"
-            gh issue comment "$n" --body-file "$I/comment.md"
+          if [ -n "$n" ]; then gh issue comment "$n" --body-file "$I/comment.md"; fi
+          if [ "$TASK" = hts ]; then
+            # the revision cannot go live as it is: mark it held (so it is not retried daily) and say why
+            gh auth setup-git
+            git push -q --force origin "HEAD:refs/heads/held/hts-$REL" 2>/dev/null || git push -q --force origin "origin/tariff-update/$REL:refs/heads/held/hts-$REL"
+            [ -n "$n" ] || gh issue create --title "Not published: HTS $REL (rule work)" --body-file "$I/comment.md"
           fi
       - if: always() && steps.claude.outcome != 'skipped'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

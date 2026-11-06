@@ -45,7 +45,7 @@ Run `npm --prefix app test`, `npm --prefix app run audit:headings`, `npm --prefi
 `npm --prefix app run lint`. Re-run the validation: `npm --prefix app run census -- --month {{YYMM}}` (and
 `--month {{PREV}}` when there is a month before), then compare the `share` values in the summary files with the
 originals in `data/build/improve/` (`before_{{YYMM}}.json`, `before_{{PREV}}.json`). The workflow runs all of this
-again itself and offers the change only if the unexplained share falls or the exact-match share rises on {{MONTH}}
+again itself and takes the change live, with no person reviewing it, only if the unexplained share falls or the exact-match share rises on {{MONTH}}
 without either slipping on the month before. Spot-check affected codes with
 `npm --prefix app run quote --silent -- --hts <code> --from <ISO2> --value 10000 --mode ocean --entry {{MONTH}}-20`.
 

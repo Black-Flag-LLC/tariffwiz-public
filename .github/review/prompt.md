@@ -45,7 +45,10 @@ sentences: what the document does and what you did. Then do one of these:
    if the engine has to change, change it and add a golden test beside the existing ones. Then run
    `npm --prefix app test` and `npm --prefix app run audit:headings`, and check a few affected codes with
    `npm --prefix app run quote --silent -- --hts <code> --from <ISO2> --value 10000 --mode ocean --entry <YYYY-MM-DD>`.
-   Then run mark_reviewed.py as in 1, with a note saying what was encoded. A person reviews this before it goes live.
+   Then run mark_reviewed.py as in 1, with a note saying what was encoded. **No person reviews this**: it goes live by
+   itself once it stays inside the rules, the engine and added tests and passes every check (lint, typecheck, the
+   golden tests, the filing audit and the Census check). Never change or delete an existing test line. Encode only
+   what the document's verbatim text says, with its effective date; anything less certain is needs_person.
 3. **needs_person**: it may change a duty but you could not read the full text, or encoding it is beyond what you can
    do reliably. Change no file; say in the summary exactly what is unclear or what has to be encoded.
 

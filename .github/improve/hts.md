@@ -36,7 +36,7 @@ code; add a golden test for anything the engine has to do differently.
 `npm --prefix app test`, `npm --prefix app run audit:headings`, `npm --prefix app run typecheck`,
 `npm --prefix app run lint`, and `npm --prefix app run census -- --month {{YYMM}}` with
 `python -I pipeline/census_gate.py check data/validation/census_{{MONTH}}_summary.json`. The workflow runs them again and
-offers your change only if all pass. Spot-check codes you touched with
+takes your change live, with no person reviewing it, only if all pass. Spot-check codes you touched with
 `npm --prefix app run quote --silent -- --hts <code> --from <ISO2> --value 10000 --mode ocean`.
 
 ## Finish

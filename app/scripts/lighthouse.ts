@@ -36,8 +36,9 @@ async function main() {
     const lighthouse = (extra: string[] = []): Report => JSON.parse(execFileSync('npx', ['--yes', LIGHTHOUSE, URL, '--quiet',
       '--output=json', '--output-path=stdout', '--only-categories=performance,accessibility,best-practices',
       '--chrome-flags=--headless=new --no-sandbox', ...extra], { shell: win, maxBuffer: 64 << 20, encoding: 'utf8' }));
-    const warm = lighthouse();   // warm-up (cold Chrome and disk), not scored; it measures the host's CPU
-    const index = warm.environment.benchmarkIndex;
+    // two warm-ups (cold Chrome and disk), not scored; they measure the host's CPU. A cold runner reads slow on the first
+    // (1100 where the runs then measured 3000), so the faster reading sets the slowdown.
+    const index = Math.max(lighthouse().environment.benchmarkIndex, lighthouse().environment.benchmarkIndex);
     const cpu = Math.max(1, Math.min(4, Math.round((4 * index) / REFERENCE_INDEX * 2) / 2));
     console.log(`host benchmark index ${Math.round(index)}: CPU slowdown ${cpu}x (4x at ${REFERENCE_INDEX} or faster)`);
     const runs: Record<Cat, number>[] = [];

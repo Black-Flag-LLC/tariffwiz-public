@@ -1,0 +1,34 @@
+name: dependabot-merge
+# Dependabot's update pull requests (the pinned GitHub Actions, the app's npm packages; .github/dependabot.yml) merge
+# themselves once CI has passed on them: lint, typecheck, golden tests, filing audit, build and Lighthouse. No one has
+# to merge them. A failing update stays open (and Dependabot rebases and retries it); nothing else merges here.
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+permissions:
+  contents: read
+jobs:
+  merge:
+    # only a successful CI run on a pull request that Dependabot opened in this repository
+    if: >-
+      github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      startsWith(github.event.workflow_run.head_branch, 'dependabot/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { contents: write, pull-requests: write, actions: write }
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Merge the update that passed (the exact commit CI tested)
+        run: |
+          pr=$(gh pr list -R "${{ github.repository }}" --state open --head "$HEAD_BRANCH" --json number,author,headRefOid \
+            -q ".[] | select(.author.login == \"app/dependabot\" and .headRefOid == \"$HEAD_SHA\") | .number")
+          if [ -z "$pr" ]; then echo "No open Dependabot pull request at $HEAD_SHA (updated or closed since): nothing to do."; exit 0; fi
+          gh pr merge "$pr" -R "${{ github.repository }}" --squash --delete-branch --match-head-commit "$HEAD_SHA"
+          gh workflow run ci.yml -R "${{ github.repository }}" -f deploy=true   # a GITHUB_TOKEN merge does not start CI by itself
+          echo "Merged #$pr ($HEAD_BRANCH) after CI passed on $HEAD_SHA." >> "$GITHUB_STEP_SUMMARY"
