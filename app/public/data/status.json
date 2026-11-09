@@ -6,5 +6,30 @@
   "title": "Revision 22 (2026)",
   "from": "10/30/2026"
  },
- "pending": []
+ "pending": [
+  {
+   "doc": "2026-22867",
+   "title": "Section 301 Action: China's Targeting of the Maritime, Logistics, and Shipbuilding Sectors for Dominance; Modification",
+   "type": "Notice",
+   "date": "2026-11-10",
+   "url": "https://www.federalregister.gov/public-inspection/2026-22867/section-301-action-chinas-targeting-of-the-maritime-logistics-and-shipbuilding-sectors-for-dominance",
+   "inspection": true
+  },
+  {
+   "doc": "2026-22868",
+   "title": "Determination: Vietnam's Acts, Policies, and Practices Related to Intellectual Property Protection and Enforcement; Extension of Section 301 Investigation",
+   "type": "Notice",
+   "date": "2026-11-10",
+   "url": "https://www.federalregister.gov/public-inspection/2026-22868/determination-vietnams-acts-policies-and-practices-related-to-intellectual-property-protection-and",
+   "inspection": true
+  },
+  {
+   "doc": "2026-22925",
+   "title": "Product Exclusion Extensions: China's Acts, Policies, and Practices Related to Technology Transfer, Intellectual Property, and Innovation",
+   "type": "Notice",
+   "date": "2026-11-10",
+   "url": "https://www.federalregister.gov/public-inspection/2026-22925/product-exclusion-extensions-chinas-acts-policies-and-practices-related-to-technology-transfer",
+   "inspection": true
+  }
+ ]
 }
