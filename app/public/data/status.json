@@ -2,26 +2,26 @@
  "rulesChecked": "2026-11-09",
  "revision": "2026HTSRev22",
  "latestRevision": {
-  "name": "2026HTSRev22",
-  "title": "Revision 22 (2026)",
-  "from": "10/30/2026"
+  "name": "2026HTSRev23",
+  "title": "Revision 23 (2026)",
+  "from": "11/10/2026"
  },
  "pending": [
   {
    "doc": "2026-22867",
-   "title": "Section 301 Action: China's Targeting of the Maritime, Logistics, and Shipbuilding Sectors for Dominance; Modification",
+   "title": "Notice of Modification of Section 301 Action: China's Targeting of the Maritime, Logistics, and Shipbuilding Sectors for Dominance",
    "type": "Notice",
    "date": "2026-11-10",
-   "url": "https://www.federalregister.gov/public-inspection/2026-22867/section-301-action-chinas-targeting-of-the-maritime-logistics-and-shipbuilding-sectors-for-dominance",
-   "inspection": true
+   "url": "https://www.federalregister.gov/documents/2026/11/10/2026-22867/notice-of-modification-of-section-301-action-chinas-targeting-of-the-maritime-logistics-and",
+   "inspection": false
   },
   {
    "doc": "2026-22925",
-   "title": "Product Exclusion Extensions: China's Acts, Policies, and Practices Related to Technology Transfer, Intellectual Property, and Innovation",
+   "title": "Notice of Product Exclusion Extensions: China's Acts, Policies, and Practices Related to Technology Transfer, Intellectual Property, and Innovation",
    "type": "Notice",
    "date": "2026-11-10",
-   "url": "https://www.federalregister.gov/public-inspection/2026-22925/product-exclusion-extensions-chinas-acts-policies-and-practices-related-to-technology-transfer",
-   "inspection": true
+   "url": "https://www.federalregister.gov/documents/2026/11/10/2026-22925/notice-of-product-exclusion-extensions-chinas-acts-policies-and-practices-related-to-technology",
+   "inspection": false
   }
  ]
 }
