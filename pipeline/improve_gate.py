@@ -8,7 +8,10 @@
   python -I pipeline/improve_gate.py selftest
 
 What may change: the rules (app/public/data/rules.json), the engine (app/src/engine/*.ts) and the golden tests, which
-may gain cases but never lose or alter a line (they pin answers already known to be right). Never the Census
+may gain cases but never lose or alter a line (they pin answers already known to be right). One exception, so a
+legal date change (an exclusion extended, a measure postponed) can go live with no person: an existing test line may
+change when only its dates change (every expected amount, code and word stays the same) and each new full date it
+uses is a date the same change adds to the rules or the engine. Never the Census
 validation, this gate, the workflows or the other data, so the measuring stick cannot move.
 
 Census improvement: on the newest month the unexplained (MISMATCH) share falls or the exact-match share rises by at
@@ -28,18 +31,43 @@ ALLOWED = [
     re.compile(r"^app/src/engine/[\w.-]+\.ts$"),
 ]
 TESTS = re.compile(r"^app/src/(engine/)?[\w.-]+\.test\.ts$")
+_MON = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*"
+DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b|\b\d{2}-\d{2}\b|\b\d{1,2} " + _MON + r" \d{4}\b|\b" + _MON + r" \d{1,2}, \d{4}\b")
+ISO = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+
+
+def date_only_problems(path, hunks, source_dates):
+    """hunks: [(removed lines, added lines)] of one existing test file. -> reasons the edits are more than date moves."""
+    bad = []
+    for removed, added in hunks:
+        if not removed:
+            continue
+        if len(removed) != len(added):
+            bad.append(f"{path}: existing golden test lines changed or removed ({len(removed)} out, {len(added)} in)")
+            continue
+        for old, new in zip(removed, added, strict=True):
+            if DATE.sub("D", old) != DATE.sub("D", new):
+                bad.append(f"{path}: existing test line changed beyond its dates: {old.strip()[:100]}")
+                continue
+            missing = sorted(set(ISO.findall(new)) - set(ISO.findall(old)) - source_dates)
+            if missing:
+                bad.append(f"{path}: test moved to {', '.join(missing)}, a date the rules/engine change does not add")
+    return bad
 
 
 def git(*a):
     return subprocess.run(["git", *a], capture_output=True, text=True, check=True).stdout
 
 
-def scope_problems(changes, also=()):
-    """changes: [(status, path, added, deleted)] -> list of reasons the change set may not be offered."""
+def scope_problems(changes, also=(), test_hunks=None, source_dates=frozenset()):
+    """changes: [(status, path, added, deleted)] -> list of reasons the change set may not be offered.
+    test_hunks: {test path: [(removed, added)]} for date-only edits; source_dates: full dates added to rules/engine."""
     bad = []
     for status, path, _added, deleted in changes:
         if TESTS.match(path):
-            if status == "D" or deleted:
+            if status != "D" and deleted and test_hunks is not None and path in test_hunks:
+                bad += date_only_problems(path, test_hunks[path], source_dates)
+            elif status == "D" or deleted:
                 bad.append(f"{path}: existing golden tests may not be changed or removed ({deleted} line(s) taken out)")
         elif path in also and status != "D":
             continue
@@ -62,6 +90,32 @@ def changes_since(base):
         a, d, p = line.split("\t", 2)
         num[p] = (int(a) if a != "-" else 0, int(d) if d != "-" else 0)
     return [(s, p, *num.get(p, (0, 0))) for p, s in sorted(status.items())]
+
+
+def hunks_since(base, path):
+    hunks, cur = [], None
+    for line in git("diff", "-U0", "--no-renames", base, "--", path).splitlines():
+        if line.startswith("@@"):
+            cur = ([], [])
+            hunks.append(cur)
+        elif cur is not None and line.startswith("-") and not line.startswith("---"):
+            cur[0].append(line[1:])
+        elif cur is not None and line.startswith("+") and not line.startswith("+++"):
+            cur[1].append(line[1:])
+    return hunks
+
+
+def dates_added_since(base, paths):
+    """Full dates that appear in the new rules/engine but not the old: the dates this change brings in."""
+    def all_dates(ref, p):
+        try:
+            return set(ISO.findall(git("show", f"{ref}:{p}") if ref else open(p, encoding="utf-8").read()))
+        except (subprocess.CalledProcessError, OSError):
+            return set()
+    out = set()
+    for p in paths:
+        out |= all_dates(None, p) - all_dates(base, p)
+    return out
 
 
 def shares(path):
@@ -95,6 +149,18 @@ def selftest():
     assert ok([("M", "app/public/data/rules.json", 3, 3), ("M", "app/src/engine/calc.ts", 5, 1), ("A", "app/src/engine/new.test.ts", 20, 0)])
     assert ok([("M", "app/src/engine/calc.test.ts", 12, 0)])                         # cases added
     assert not ok([("M", "app/src/engine/calc.test.ts", 1, 1)])                      # an expectation changed
+    t = [("M", "app/public/data/rules.json", 1, 1), ("M", "app/src/engine/audit.test.ts", 1, 1)]
+    moved = {"app/src/engine/audit.test.ts": [(["  run(x, { entryDate: '2026-11-10' }).duty).toBe(1500); // from 11-10"],
+                                               ["  run(x, { entryDate: '2027-01-10' }).duty).toBe(1500); // from 01-10"])]}
+    assert not scope_problems(t, test_hunks=moved, source_dates={"2027-01-10"})      # a legal date moved, nothing else
+    assert scope_problems(t, test_hunks=moved, source_dates=set())                   # date not backed by the rules
+    amount = {"app/src/engine/audit.test.ts": [(["  run(x).duty).toBe(1500);"], ["  run(x).duty).toBe(1600);"])]}
+    assert scope_problems(t, test_hunks=amount, source_dates={"2027-01-10"})         # an expected amount changed
+    both = {"app/src/engine/audit.test.ts": [(["  run(x, { entryDate: '2026-11-10' }).duty).toBe(1500);"],
+                                              ["  run(x, { entryDate: '2027-01-10' }).duty).toBe(500);"])]}
+    assert scope_problems(t, test_hunks=both, source_dates={"2027-01-10"})           # date and amount together
+    gone = {"app/src/engine/audit.test.ts": [(["  it('a', () => {", "  });"], [])]}
+    assert scope_problems(t, test_hunks=gone, source_dates=set())                    # a test removed
     assert not ok([("D", "app/src/search.test.ts", 0, 40)])
     assert not ok([("M", "app/scripts/validate_census.ts", 1, 1)])                   # the measuring stick
     assert not ok([("M", "pipeline/improve_gate.py", 1, 0)])
@@ -118,8 +184,11 @@ if __name__ == "__main__":
     if cmd == ["scope"]:
         rest = sys.argv[3:]
         also = tuple(rest[i + 1] for i in range(len(rest) - 1) if rest[i] == "--also")
-        problems = scope_problems(changes_since(sys.argv[2]), also)
-        print("\n".join(f"- {p}" for p in problems) if problems else "Every change is inside the rules, the engine and added tests.")
+        base, changes = sys.argv[2], changes_since(sys.argv[2])
+        tests = {p: hunks_since(base, p) for s_, p, _a, d in changes if TESTS.match(p) and s_ != "D" and d}
+        src = [p for s_, p, _a, _d in changes if s_ != "D" and any(r.match(p) for r in ALLOWED)]
+        problems = scope_problems(changes, also, tests, dates_added_since(base, src))
+        print("\n".join(f"- {p}" for p in problems) if problems else "Every change is inside the rules, the engine, added tests and date-only test moves.")
         sys.exit(1 if problems else 0)
     elif cmd == ["census"]:
         files = [shares(p) for p in sys.argv[2:6]]

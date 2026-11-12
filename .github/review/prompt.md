@@ -47,7 +47,7 @@ sentences: what the document does and what you did. Then do one of these:
    `npm --prefix app run quote --silent -- --hts <code> --from <ISO2> --value 10000 --mode ocean --entry <YYYY-MM-DD>`.
    Then run mark_reviewed.py as in 1, with a note saying what was encoded. **No person reviews this**: it goes live by
    itself once it stays inside the rules, the engine and added tests and passes every check (lint, typecheck, the
-   golden tests, the filing audit and the Census check). Never change or delete an existing test line. Encode only
+   golden tests, the filing audit and the Census check). Never change or delete an existing test line, with one exception: when the document moves a legal date (an exclusion extended, a measure postponed or brought forward), move the matching dates in the existing tests that pin the old date to the new one, changing nothing else on those lines (no amounts, codes or words), and only to dates your rules/engine change also adds. The workflow checks this mechanically. Encode only
    what the document's verbatim text says, with its effective date; anything less certain is needs_person.
 3. **needs_person**: it may change a duty but you could not read the full text, or encoding it is beyond what you can
    do reliably. Change no file; say in the summary exactly what is unclear or what has to be encoded.

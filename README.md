@@ -47,7 +47,8 @@ waits for a person. A change goes live when it passes every automated check; one
 published, the site keeps the last good version, and an issue says what failed.
 
 **The checks a change must pass to go live** (`.github/scripts/checks.sh`): lint, typecheck, the golden tests (which
-may gain cases but never lose or change one), the filing audit (1.9 million calculations), and the Census check: the
+may gain cases but never lose or change one, except that a test pinned to a legal date the law moved has only that
+date moved, to a date the same change adds to the rules), the filing audit (1.9 million calculations), and the Census check: the
 engine against the duties CBP actually collected in the newest month, within its limits. Automated changes may touch
 only the rules, the engine and added tests (`pipeline/improve_gate.py`). `rules.json` merges as JSON
 (`pipeline/json_merge.py`), so automated writers never collide on its single line.
