@@ -10,6 +10,7 @@ the watcher only looks back to meta.checked, so anything unreviewed before it wo
 import datetime
 import json
 import sys
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -18,7 +19,8 @@ RULES = ROOT / "app" / "public" / "data" / "rules.json"
 
 
 def main(argv):
-    today = datetime.date.today().isoformat()
+    # US Eastern, the Federal Register's clock: a UTC date runs a day ahead every US evening
+    today = datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat()
     if argv and argv[0] != "--checked":
         if len(argv) < 2:
             sys.exit(__doc__)

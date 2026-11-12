@@ -1,0 +1,66 @@
+# guardian: keeps the automation alive with no person in the loop.
+# - GitHub disables scheduled workflows after 60 days without repository activity: re-enable every workflow daily,
+#   and push a heartbeat commit when main has been quiet for 30 days.
+# - If tariff-watch has not succeeded in 36 hours (a dropped schedule, a crashed run), start it again.
+# - If the site's "rules checked" date is over 3 days old, re-run the watch and open (or update) a "Stale" issue,
+#   which emails the repository owner; it closes itself once the date is current again.
+name: guardian
+on:
+  schedule: [{ cron: '29 7 * * *' }]   # daily, 07:29 UTC (between the watch's two slots)
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency: { group: guardian, cancel-in-progress: false }
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    permissions: { contents: write, issues: write, actions: write }
+    env: { GH_TOKEN: '${{ github.token }}', REPO: '${{ github.repository }}' }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: main }
+      - name: Keep every workflow enabled
+        run: |
+          gh api "repos/$REPO/actions/workflows" --paginate --jq '.workflows[] | "\(.id) \(.state) \(.path)"' |
+          while read -r id state path; do
+            if [ "$state" != active ]; then
+              gh api -X PUT "repos/$REPO/actions/workflows/$id/enable" && echo "re-enabled $path (was $state)"
+            fi
+          done
+      - name: Heartbeat commit when main has been quiet for 30 days
+        run: |
+          last=$(git log -1 --format=%ct)
+          if [ "$last" -lt "$(date -d '30 days ago' +%s)" ]; then
+            mkdir -p .github/heartbeat
+            date -u +%FT%TZ > .github/heartbeat/last
+            git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .github/heartbeat/last
+            git commit -qm "Heartbeat: keep scheduled workflows enabled"
+            git push -q origin HEAD:main
+            echo "pushed heartbeat"
+          fi
+      - name: Restart the watch if it has stalled
+        run: |
+          ok=$(gh api "repos/$REPO/actions/workflows/watch.yml/runs?status=success&per_page=1" --jq '.workflow_runs[0].created_at // ""')
+          busy=$(gh api "repos/$REPO/actions/workflows/watch.yml/runs?per_page=5" --jq '[.workflow_runs[] | select(.status != "completed")] | length')
+          if [ "$busy" = 0 ] && { [ -z "$ok" ] || [ "$(date -d "$ok" +%s)" -lt "$(date -d '36 hours ago' +%s)" ]; }; then
+            gh workflow run watch.yml --ref main && echo "::warning::tariff-watch last succeeded ${ok:-never}; started it again"
+          fi
+      - name: Raise an alarm if the site's rules date is stale
+        run: |
+          checked=$(jq -r .meta.checked app/public/data/rules.json); export TZ=America/New_York
+          pending=$(jq -r '[.pending[].doc] | join(", ")' app/public/data/status.json)
+          title="Stale: rules not checked since"
+          open=$(gh issue list -R "$REPO" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // ""')
+          if [ "$(date -d "$checked" +%s)" -lt "$(date -d '3 days ago' +%s)" ]; then
+            body="The site's \"rules checked\" date is **$checked**, more than 3 days ago.
+
+          Still unreviewed: ${pending:-none}. Open held work: $(git ls-remote --heads origin 'review/*' 'held/*' | sed 's#.*refs/heads/##' | paste -sd' ' -)
+
+          The guardian re-runs the watch daily. If this stays open, check the ANTHROPIC_API_KEY secret and its credit, then the latest tariff-watch run."
+            if [ -z "$open" ]; then gh issue create -R "$REPO" --title "$title $checked" --body "$body"
+            else gh issue edit "$open" -R "$REPO" --title "$title $checked" --body "$body"; fi
+            gh workflow run watch.yml --ref main || true
+          elif [ -n "$open" ]; then
+            gh issue close "$open" -R "$REPO" --comment "Rules checked $checked: current again."
+          fi

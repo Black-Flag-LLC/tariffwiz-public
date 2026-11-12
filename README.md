@@ -61,7 +61,7 @@ only the rules, the engine and added tests (`pipeline/improve_gate.py`). `rules.
 - **Daily review (after the watch):** Claude reads the verbatim text of each new Federal Register action
   (`.github/review/prompt.md`). One that changes no duty is recorded and goes live. One that changes a duty is encoded
   and goes live once it passes every check. One Claude cannot settle, or whose change fails a check, waits on a
-  `review/<document>` branch and is tried again after a week. When nothing is left unreviewed, the "rules checked" date
+  `review/<document>` branch and is tried again the next day. When nothing is left unreviewed, the "rules checked" date
   moves to today and the log issue closes.
 - **New HTS revision:** the data is rebuilt and checked. If no Chapter 99 row, note or list moved, it goes live.
   Otherwise self-improve does the rule work (`.github/improve/hts.md`) and it goes live through go-live.
@@ -75,6 +75,10 @@ only the rules, the engine and added tests (`pipeline/improve_gate.py`). `rules.
 - **Monthly:** AD/CVD order flags are refreshed from the Federal Register (3rd); an order leaves only when a revocation
   notice is found, and one simply not found that month is kept. The Census check re-runs on the newest month (12th),
   starts self-improve, and closes its drift issue when accuracy is back within the limits.
+- **Daily guardian (`guardian`, 07:29 UTC):** re-enables any disabled workflow and pushes a heartbeat commit when
+  `main` has been quiet for 30 days (GitHub pauses schedules after 60 quiet days), restarts `tariff-watch` if it has not
+  succeeded in 36 hours, and opens a "Stale" issue (which emails the owner) if "rules checked" is over 3 days old,
+  closing it once the date is current.
 - **Every push to `main`:** CI and, when it passes, a GitHub Pages deploy. A Lighthouse check of the built site runs
   beside it (phone performance at least 90 on a CPU-calibrated median of five runs, accessibility and best practices
   100) and fails visibly without holding back the deploy; the tests also check every theme's text contrast.

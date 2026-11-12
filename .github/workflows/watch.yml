@@ -100,7 +100,7 @@ jobs:
           # nothing published since the rules' check date is unreviewed: the rules are checked as of today ("rules
           # checked" on the site). The review job does the same after it clears the banner.
           if [ "$(jq '.pending | length' app/public/data/status.json)" = 0 ] \
-             && [ "$(jq -r .meta.checked app/public/data/rules.json)" != "$(python -I -c 'import datetime; print(datetime.date.today())')" ]; then
+             && [ "$(jq -r .meta.checked app/public/data/rules.json)" != "$(TZ=America/New_York date +%F)" ]; then
             python -I pipeline/mark_reviewed.py --checked
             python -I pipeline/watch.py --json /dev/null --status app/public/data/status.json > /dev/null || true
           fi
@@ -263,11 +263,11 @@ jobs:
         env: { TEST_DOC: '${{ inputs.review_doc }}', GH_TOKEN: '${{ github.token }}' }
         run: |
           mkdir -p data/build/review
-          # a review held for a week (Claude could not settle it, or its change failed a check) is tried again
+          # a review held for a day (Claude could not settle it, or its change failed a check) is tried again
           if [ -z "$TEST_DOC" ]; then
             for b in $(gh api "repos/${{ github.repository }}/branches" --paginate --jq '.[].name | select(startswith("review/"))'); do
               d=$(gh api "repos/${{ github.repository }}/commits/$b" --jq '.commit.committer.date')
-              if [ "$(date -d "$d" +%s)" -lt "$(date -d '7 days ago' +%s)" ]; then
+              if [ "$(date -d "$d" +%s)" -lt "$(date -d '20 hours ago' +%s)" ]; then
                 gh api -X DELETE "repos/${{ github.repository }}/git/refs/heads/$b" > /dev/null && echo "retrying ${b#review/} (held since $d)"
               fi
             done
