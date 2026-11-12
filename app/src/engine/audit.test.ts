@@ -112,22 +112,22 @@ describe('China — Section 301 lists and note 31 (all $10,000 unless stated)', 
   });
 });
 
-describe('China — exclusions and the 2026-11-09/10 switch', () => {
-  // List 3 0304.72.50 (L212989); bare exclusion 20(vvv)(iii)(1) (L228843) via 9903.88.69 through 2026-11-09 (L242475–242479).
-  it('CN frozen haddock: excluded on 11-09, List 3 from 11-10', () => {
-    expect(run('0304.72.50.00', 'CN', 10000, { entryDate: '2026-11-09' }).duty).toBe(1250);
-    const r = run('0304.72.50.00', 'CN', 10000, { entryDate: '2026-11-10' });
+describe('China — exclusions and the 2027-01-09/10 switch', () => {
+  // List 3 0304.72.50 (L212989); bare exclusion 20(vvv)(iii)(1) (L228843) via 9903.88.69 through 2027-01-09 (L242475–242479).
+  it('CN frozen haddock: excluded on 01-09, List 3 from 01-10', () => {
+    expect(run('0304.72.50.00', 'CN', 10000, { entryDate: '2027-01-09' }).duty).toBe(1250);
+    const r = run('0304.72.50.00', 'CN', 10000, { entryDate: '2027-01-10' });
     expect(charged(r)).toEqual(['9903.05.31=1250', '9903.88.03=2500']);
   });
   // List 2 8486.10 (L212843); 20(www)(1) Czochralski furnace >700 kg for solar wafers (L229204–229206) via 9903.88.70
-  // through 2026-11-09 (L242481–242485); 52(b) (L233629). $100,000.
-  it('CN Czochralski solar furnace: 9903.88.70 to 11-09, List 2 from 11-10', () => {
+  // through 2027-01-09 (L242481–242485); 52(b) (L233629). $100,000.
+  it('CN Czochralski solar furnace: 9903.88.70 to 01-09, List 2 from 01-10', () => {
     expect(run('8486.10.00.00', 'CN', 100000, {}, { s301Exclusion: true }).duty).toBe(0); // described exclusion: user confirms it matches
-    expect(run('8486.10.00.00', 'CN', 100000, { entryDate: '2026-11-10' }, { s301Exclusion: true }).duty).toBe(25000);
+    expect(run('8486.10.00.00', 'CN', 100000, { entryDate: '2027-01-10' }, { s301Exclusion: true }).duty).toBe(25000);
   });
   // 20(www) items (8)–(12) for 8486.20.0000 are ONLY solar-cell/wafer machines (L229240–229264); a semiconductor-fab
   // etcher is not described, so List 2 8486.20 (L212844) +25% applies; 52(b) (L233630). $100,000.
-  // FIXED (was ENGINE BUG): exclusions are matched by code alone — every 8486.20.00.00 machine is excluded until 11-09 (pays $0).
+  // FIXED (was ENGINE BUG): exclusions are matched by code alone — every 8486.20.00.00 machine is excluded until 01-09 (pays $0).
   it('CN semiconductor (non-solar) wafer etcher: List 2 25% on 2026-10-28', () =>
     expect(run('8486.20.00.00', 'CN', 100000).duty).toBe(25000));
   // List 1 9032.10.00 (L212726); exclusion 20(vvv)(i)(47) covers only thermostats "not designed to connect to the
@@ -141,31 +141,31 @@ describe('China — exclusions and the 2026-11-09/10 switch', () => {
   // FIXED (was ENGINE BUG): every 9401.61.6011 seat is treated as excluded → List 3 dropped ($2,500).
   it('CN upholstered wooden armchair (outside exclusion 66 dimensions): List 3 + 232 wood', () =>
     expect(charged(run('9401.61.60.11', 'CN', 10000))).toEqual(['9903.76.02=2500', '9903.88.03=2500']));
-  // STS crane: 9903.92.10 +25% from 2024-09-27 (L243029); from 2026-11-10 also 9903.91.14 +100% (L242961) and they
+  // STS crane: 9903.92.10 +25% from 2024-09-27 (L243029); from 2027-01-10 also 9903.91.14 +100% (L242961) and they
   // stack (31(l)(i) L230423–230425); note 52 applies. $1,000,000.
-  it('CN ship-to-shore crane: 25% now, 125% from 11-10', () => {
+  it('CN ship-to-shore crane: 25% now, 125% from 01-10', () => {
     expect(run('8426.19.00.00', 'CN', 1000000, {}, { stsCrane: true }).duty).toBe(375000);
-    expect(run('8426.19.00.00', 'CN', 1000000, { entryDate: '2026-11-10' }, { stsCrane: true }).duty).toBe(1375000);
+    expect(run('8426.19.00.00', 'CN', 1000000, { entryDate: '2027-01-10' }, { stsCrane: true }).duty).toBe(1375000);
   });
   // 9903.92.10 is ONLY ship-to-shore cranes; other 8426.19.00 cranes are 9903.92.80 "applicable subheading" (L243045);
   // 9903.91.14 is STS-only too (31(l)(i) L230406). Overhead gantry crane: base Free + note 52 12.5% = $125,000.
-  // FIXED (was ENGINE BUG): every 8426.19.00 crane gets 9903.92.10 (+$250,000), and +100% more from 11-10.
+  // FIXED (was ENGINE BUG): every 8426.19.00 crane gets 9903.92.10 (+$250,000), and +100% more from 01-10.
   it('CN overhead gantry crane (not STS): 9903.92.80, note 52 only', () =>
     expect(run('8426.19.00.00', 'CN', 1000000).duty).toBe(125000));
   // Chassis: List 3 8716.39.00 (L214567) +25%; 8716.39.00 on 16(c)(vi)/(vii) (L211054, L211148) → 9903.82.09 +25%
-  // (steel ≥15% of weight). From 2026-11-10 intermodal chassis add 9903.91.12 +100% (L242936–242942); stacking with
+  // (steel ≥15% of weight). From 2027-01-10 intermodal chassis add 9903.91.12 +100% (L242936–242942); stacking with
   // List 3 is the literal reading (ref open_questions.md #1, flagged interpretation).
-  it('CN intermodal chassis: 11-09 vs 11-10', () => {
-    expect(run('8716.39.00.90', 'CN', 10000, { entryDate: '2026-11-09' }, { metalWeight15: true, chassis: true }).duty).toBe(5000);
-    const r = run('8716.39.00.90', 'CN', 10000, { entryDate: '2026-11-10' }, { metalWeight15: true, chassis: true });
+  it('CN intermodal chassis: 01-09 vs 01-10', () => {
+    expect(run('8716.39.00.90', 'CN', 10000, { entryDate: '2027-01-09' }, { metalWeight15: true, chassis: true }).duty).toBe(5000);
+    const r = run('8716.39.00.90', 'CN', 10000, { entryDate: '2027-01-10' }, { metalWeight15: true, chassis: true });
     expect(r.duty).toBe(15000);
     expect(r.lines.find((l) => l.heading === '9903.88.03')?.interpretation).toBeTruthy();
   });
   // 31(k)(ii) (L230401–230405): 8716.39.0090 goods that are NOT intermodal chassis go to 9903.91.13 (no duty).
-  // A flatbed equipment trailer on 2026-11-10: List 3 + 82.09 = $5,000.
-  // FIXED (was ENGINE BUG): no chassis question; every 8716.39.0090 trailer gets +100% from 11-10 ($15,000).
-  it('CN flatbed trailer (not an intermodal chassis) on 2026-11-10: 9903.91.13, no +100%', () =>
-    expect(run('8716.39.00.90', 'CN', 10000, { entryDate: '2026-11-10' }, { metalWeight15: true }).duty).toBe(5000));
+  // A flatbed equipment trailer on 2027-01-10: List 3 + 82.09 = $5,000.
+  // FIXED (was ENGINE BUG): no chassis question; every 8716.39.0090 trailer gets +100% from 01-10 ($15,000).
+  it('CN flatbed trailer (not an intermodal chassis) on 2027-01-10: 9903.91.13, no +100%', () =>
+    expect(run('8716.39.00.90', 'CN', 10000, { entryDate: '2027-01-10' }, { metalWeight15: true }).duty).toBe(5000));
 });
 
 describe('Section 232 families', () => {

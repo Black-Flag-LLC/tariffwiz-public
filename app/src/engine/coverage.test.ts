@@ -67,11 +67,11 @@ describe('Section 232 narrow headings (narrow_232.json)', () => {
     expect(lineOf(r, '9903.94.03')?.amount).toBe(7000);
     expect(lineOf(r, '9903.94.02')?.basisValue).toBe(12000);
   });
-  it('STS crane from Korea after 2026-11-10: no China link files 9903.91.15; pre-2025 contract files 9903.91.16', () => {
+  it('STS crane from Korea after 2027-01-10: no China link files 9903.91.15; pre-2025 contract files 9903.91.16', () => {
     const code = firstLeaf('s301:9903.91.14');
-    const clean = run(code, 'KR', 1e6, { entryDate: '2026-11-20' }, { stsCrane: true });
+    const clean = run(code, 'KR', 1e6, { entryDate: '2027-01-20' }, { stsCrane: true });
     expect(lineOf(clean, '9903.91.15')).toBeTruthy();
-    const old = run(code, 'KR', 1e6, { entryDate: '2026-11-20' }, { stsCrane: true, chineseCraneLink: true, craneOldContract: true });
+    const old = run(code, 'KR', 1e6, { entryDate: '2027-01-20' }, { stsCrane: true, chineseCraneLink: true, craneOldContract: true });
     expect(lineOf(old, '9903.91.16')).toBeTruthy();
     expect(old.lines.some((l) => l.heading === '9903.91.14')).toBe(false);
   });
@@ -151,10 +151,10 @@ describe('Section 232 narrow headings (narrow_232.json)', () => {
     const r = run(code, 'DE', 10000, {}, { metalWeight15: true, motorcycleUse: true, vehiclePart: false, truckPart: false, equipmentUse: false });
     expect(lineOf(r, '9903.82.13')?.amount).toBe(0);
   });
-  it('non-China ship-to-shore crane with Chinese components, from 2026-11-10 → 9903.91.14 +100%', () => {
-    const r = run('8426.19.00.00', 'KR', 1000000, { entryDate: '2026-11-15' }, { stsCrane: true, chineseCraneLink: true, metalWeight15: false });
+  it('non-China ship-to-shore crane with Chinese components, from 2027-01-10 → 9903.91.14 +100%', () => {
+    const r = run('8426.19.00.00', 'KR', 1000000, { entryDate: '2027-01-15' }, { stsCrane: true, chineseCraneLink: true, metalWeight15: false });
     expect(lineOf(r, '9903.91.14')?.amount).toBe(1000000);
-    expect(lineOf(run('8426.19.00.00', 'KR', 1000000, { entryDate: '2026-11-15' }, { stsCrane: true, metalWeight15: false }), '9903.91.14')).toBeUndefined();
+    expect(lineOf(run('8426.19.00.00', 'KR', 1000000, { entryDate: '2027-01-15' }, { stsCrane: true, metalWeight15: false }), '9903.91.14')).toBeUndefined();
   });
 });
 

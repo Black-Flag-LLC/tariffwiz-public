@@ -754,13 +754,13 @@ function section301China(c: Ctx): Line[] {
   // Cranes and chassis headings cover only ship-to-shore cranes / intermodal chassis, not every crane or trailer (31(k)-(l))
   if (n31.some((m) => ['9903.92.10', '9903.91.14'].includes(m.heading))
     && !ask(c, { id: 'stsCrane', kind: 'yesno', defaultValue: false, text: 'Is this a ship-to-shore gantry crane?',
-      why: 'Ship-to-shore cranes from China pay +25% (and +100% more from 10 Nov 2026); other cranes do not.' }).value) {
+      why: 'Ship-to-shore cranes from China pay +25% (and +100% more from 10 Jan 2027); other cranes do not.' }).value) {
     n31 = n31.filter((m) => !['9903.92.10', '9903.91.14'].includes(m.heading));
     zero('9903.92.80', 'Not a ship-to-shore crane.', 'HTS ch.99 note 31(l); 9903.92.80');
   }
   if (n31.some((m) => m.heading === '9903.91.12')
     && !ask(c, { id: 'chassis', kind: 'yesno', defaultValue: false, text: 'Is this an intermodal chassis (for shipping containers)?',
-      why: 'From 10 Nov 2026 Chinese intermodal chassis pay +100%; other trailers do not.' }).value) {
+      why: 'From 10 Jan 2027 Chinese intermodal chassis pay +100%; other trailers do not.' }).value) {
     n31 = n31.filter((m) => m.heading !== '9903.91.12');
     zero('9903.91.13', 'Not an intermodal chassis.', 'HTS ch.99 note 31(k)(ii); L230401');
   }
@@ -1001,12 +1001,12 @@ const craneContractQ = { id: 'craneOldContract' as const, kind: 'yesno' as const
   text: 'Is the crane delivered under a sale contract signed before 17 April 2025?',
   why: 'Cranes under contracts signed before 17 Apr 2025 and entered before 18 Apr 2027 are exempt from the +100% (9903.91.16).' };
 
-/** 9903.91.14: ship-to-shore cranes from outside China with Chinese key components or a China-linked maker (from 2026-11-10). */
+/** 9903.91.14: ship-to-shore cranes from outside China with Chinese key components or a China-linked maker (from 2027-01-10). */
 function craneChinaLink(c: Ctx): Line[] {
   const { input } = c;
-  if (input.origin === 'CN' || !digitsOf(input.hts).startsWith('84261900') || input.entryDate < '2026-11-10') return [];
+  if (input.origin === 'CN' || !digitsOf(input.hts).startsWith('84261900') || input.entryDate < '2027-01-10') return [];
   if (!ask(c, { id: 'stsCrane', kind: 'yesno', defaultValue: false, text: 'Is this a ship-to-shore gantry crane?',
-    why: 'Ship-to-shore cranes with Chinese key parts or a China-linked maker pay +100% from 10 Nov 2026.' }).value) return [];
+    why: 'Ship-to-shore cranes with Chinese key parts or a China-linked maker pay +100% from 10 Jan 2027.' }).value) return [];
   const z = (heading: string, why: string): Line[] => [{ family: 's301_china', heading, label: 'Section 301 ship-to-shore cranes (not applied)',
     rate: 'exempt', amount: 0, why, cite: `HTS ch.99 note 31(l); ${heading}` }];
   if (!ask(c, { id: 'chineseCraneLink', kind: 'yesno', defaultValue: false,
