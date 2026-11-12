@@ -65,6 +65,16 @@
    "doc": "2026-22868",
    "date": "2026-11-09",
    "note": "USTR notice (Docket USTR-2026-0364, Section 301 Vietnam IP protection and enforcement): extends the investigation three months under Section 304(a)(3)(B), determinations due by 2027-02-28; no action or duty imposed. Nothing to encode."
+  },
+  {
+   "doc": "2026-22925",
+   "date": "2026-11-12",
+   "note": "USTR: Section 301 exclusions 9903.88.69/.70 extended through 2027-01-09; encoded in rules.json (to 2027-01-09)"
+  },
+  {
+   "doc": "2026-22867",
+   "date": "2026-11-12",
+   "note": "USTR: 9903.91.12-.16 +100% suspended until 2027-01-10; encoded in rules.json and calc.ts craneChinaLink (from 2027-01-10)"
   }
  ]
 }
