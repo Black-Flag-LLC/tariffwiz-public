@@ -75,7 +75,7 @@ only the rules, the engine and added tests (`pipeline/improve_gate.py`). `rules.
 - **Monthly:** AD/CVD order flags are refreshed from the Federal Register (3rd); an order leaves only when a revocation
   notice is found, and one simply not found that month is kept. The Census check re-runs on the newest month (12th),
   starts self-improve, and closes its drift issue when accuracy is back within the limits.
-- **Daily guardian (`guardian`, 07:29 UTC):** re-enables any disabled workflow and pushes a heartbeat commit when
+- **Guardian (`guardian`, 07:29 and 19:53 UTC; the watch re-enables it in turn):** re-enables any disabled workflow and pushes a heartbeat commit when
   `main` has been quiet for 30 days (GitHub pauses schedules after 60 quiet days), restarts `tariff-watch` if it has not
   succeeded in 36 hours, and opens a "Stale" issue (which emails the owner) if "rules checked" is over 3 days old,
   closing it once the date is current.

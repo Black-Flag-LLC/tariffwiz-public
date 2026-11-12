@@ -6,7 +6,9 @@
 #   which emails the repository owner; it closes itself once the date is current again.
 name: guardian
 on:
-  schedule: [{ cron: '29 7 * * *' }]   # daily, 07:29 UTC (between the watch's two slots)
+  schedule:   # twice daily, between the watch's two slots; GitHub can drop a scheduled run, so one slot is not enough
+    - cron: '29 7 * * *'
+    - cron: '53 19 * * *'
   workflow_dispatch:
 permissions:
   contents: read

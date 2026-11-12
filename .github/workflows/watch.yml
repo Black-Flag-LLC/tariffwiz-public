@@ -43,7 +43,7 @@ jobs:
         # GitHub turns off schedules in a public repo after 60 days with no activity; quiet months are normal here
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
-          for w in watch.yml adcvd.yml census.yml; do
+          for w in watch.yml adcvd.yml census.yml guardian.yml; do   # guardian re-enables these in turn: each keeps the other alive
             gh api -X PUT "repos/${{ github.repository }}/actions/workflows/$w/enable" || echo "::warning::could not re-enable $w"
           done
       - name: Restart automation that stalled
