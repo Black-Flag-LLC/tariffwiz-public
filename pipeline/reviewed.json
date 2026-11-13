@@ -75,6 +75,11 @@
    "doc": "2026-22867",
    "date": "2026-11-12",
    "note": "USTR: 9903.91.12-.16 +100% suspended until 2027-01-10; encoded in rules.json and calc.ts craneChinaLink (from 2027-01-10)"
+  },
+  {
+   "doc": "2026-23172",
+   "date": "2026-11-13",
+   "note": "FTZ 62 notice of proposed production activity (Penn Aluminum International, coiled aluminum tubing, Harlingen TX): FTZ board notice, no change to any duty rate. Nothing to encode."
   }
  ]
 }
