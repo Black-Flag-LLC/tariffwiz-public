@@ -1,19 +1,10 @@
 {
- "rulesChecked": "2026-11-12",
+ "rulesChecked": "2026-11-13",
  "revision": "2026HTSRev23",
  "latestRevision": {
   "name": "2026HTSRev23",
   "title": "Revision 23 (2026)",
   "from": "11/10/2026"
  },
- "pending": [
-  {
-   "doc": "2026-23172",
-   "title": "Foreign-Trade Zone (FTZ) 62, Notification of Proposed Production Activity; Penn Aluminum International, LLC; (Extruded and Drawn Coiled Aluminum Tubing); Harlingen, Texas",
-   "type": "Notice",
-   "date": "2026-11-13",
-   "url": "https://www.federalregister.gov/documents/2026/11/13/2026-23172/foreign-trade-zone-ftz-62-notification-of-proposed-production-activity-penn-aluminum-international",
-   "inspection": false
-  }
- ]
+ "pending": []
 }
