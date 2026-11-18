@@ -1,19 +1,10 @@
 {
- "rulesChecked": "2026-11-17",
+ "rulesChecked": "2026-11-18",
  "revision": "2026HTSRev23",
  "latestRevision": {
   "name": "2026HTSRev23",
   "title": "Revision 23 (2026)",
   "from": "11/10/2026"
  },
- "pending": [
-  {
-   "doc": "2026-23412",
-   "title": "Applications for Inclusion on the Binational Panels Roster Under the United States-Mexico-Canada Agreement",
-   "type": "Notice",
-   "date": "2026-11-18",
-   "url": "https://www.federalregister.gov/documents/2026/11/18/2026-23412/applications-for-inclusion-on-the-binational-panels-roster-under-the-united-states-mexico-canada",
-   "inspection": false
-  }
- ]
+ "pending": []
 }
