@@ -6,5 +6,14 @@
   "title": "Revision 23 (2026)",
   "from": "11/10/2026"
  },
- "pending": []
+ "pending": [
+  {
+   "doc": "2026-23795",
+   "title": "Extension of Import Restrictions Imposed on Archaeological and Ethnological Material of Egypt",
+   "type": "Rule",
+   "date": "2026-11-23",
+   "url": "https://www.federalregister.gov/public-inspection/2026-23795/extension-of-import-restrictions-imposed-on-archaeological-and-ethnological-material-of-egypt",
+   "inspection": true
+  }
+ ]
 }
