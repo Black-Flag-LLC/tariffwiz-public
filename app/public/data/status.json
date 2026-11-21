@@ -1,27 +1,10 @@
 {
- "rulesChecked": "2026-11-20",
+ "rulesChecked": "2026-11-21",
  "revision": "2026HTSRev23",
  "latestRevision": {
   "name": "2026HTSRev23",
   "title": "Revision 23 (2026)",
   "from": "11/10/2026"
  },
- "pending": [
-  {
-   "doc": "2026-23806",
-   "title": "Foreign-Trade Zone (FTZ) 19, Notification of Proposed Production Activity; CLAAS Omaha, Inc.; (Combine Harvesters and Adapters); Omaha, Nebraska",
-   "type": "Notice",
-   "date": "2026-11-23",
-   "url": "https://www.federalregister.gov/documents/2026/11/23/2026-23806/foreign-trade-zone-ftz-19-notification-of-proposed-production-activity-claas-omaha-inc-combine",
-   "inspection": false
-  },
-  {
-   "doc": "2026-23807",
-   "title": "Foreign-Trade Zone (FTZ) 7, Notification of Proposed Production Activity; Hindustan Platinum Puerto Rico; (Electrical Contacts); Humacao, Puerto Rico",
-   "type": "Notice",
-   "date": "2026-11-23",
-   "url": "https://www.federalregister.gov/documents/2026/11/23/2026-23807/foreign-trade-zone-ftz-7-notification-of-proposed-production-activity-hindustan-platinum-puerto-rico",
-   "inspection": false
-  }
- ]
+ "pending": []
 }
